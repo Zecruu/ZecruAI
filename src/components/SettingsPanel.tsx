@@ -59,16 +59,17 @@ export default function SettingsPanel({
 
   const isLocal = isLocalhost();
 
-  const roomCode = activeProject
+  // Remote mode: use base pairing code (no project suffix) so the daemon
+  // and web app join the same room without needing matching project IDs.
+  // Local mode: include project ID for multi-project isolation.
+  const roomCode = isLocal && activeProject
     ? `${pairingCode}-${activeProject.id}`
     : pairingCode;
 
-  const relayUrl = typeof window !== "undefined" ? window.location.origin : "";
-
   const connectCommand = useMemo(() => {
     const dangerousFlag = dangerousMode ? " --dangerous" : "";
-    return `zecru connect ${roomCode}${dangerousFlag}`;
-  }, [roomCode, dangerousMode]);
+    return `zecru connect ${pairingCode}${dangerousFlag}`;
+  }, [pairingCode, dangerousMode]);
 
   const installCommand = "npm install -g zecru-ai";
 

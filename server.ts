@@ -87,6 +87,8 @@ app.prepare().then(() => {
         status: room.daemon ? "connected" : "disconnected",
         workingDir: room.workingDir,
       });
+
+      console.log(`  [relay] Client joined: room=${data.pairingCode} daemon=${room.daemon ? "YES" : "NO"}`);
     });
 
     // Client → Daemon message
