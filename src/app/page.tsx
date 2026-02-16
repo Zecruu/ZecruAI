@@ -98,7 +98,14 @@ export default function Home() {
   // Derive active project and effective pairing code for socket
   const activeProject =
     projects.find((p) => p.id === activeProjectId) || null;
-  const effectivePairingCode = activeProjectId
+
+  // Local mode: include project ID for multi-project isolation
+  // Remote mode: use base pairing code only (daemon connects with base code)
+  const isLocal = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+     window.location.hostname === "127.0.0.1" ||
+     window.location.hostname === "::1");
+  const effectivePairingCode = isLocal && activeProjectId
     ? `${pairingCode}-${activeProjectId}`
     : pairingCode;
 
