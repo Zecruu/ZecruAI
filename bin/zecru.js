@@ -17,7 +17,7 @@ const path = require("path");
 const os = require("os");
 
 // ─── Relay URL ───────────────────────────────────────────────────────
-const DEFAULT_RELAY = "https://zecruai.com";
+const DEFAULT_RELAY = "https://www.zecruai.com";
 const RELAY_URL = process.env.RELAY_URL || DEFAULT_RELAY;
 
 // ─── Colors (no dependencies) ────────────────────────────────────────
