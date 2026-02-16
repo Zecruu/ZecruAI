@@ -15,8 +15,6 @@ function getRelayUrl(): string {
   return "http://localhost:3000";
 }
 
-const RELAY_URL = getRelayUrl();
-
 interface UseSocketOptions {
   pairingCode: string;
   onMessage: (message: Message) => void;
@@ -72,9 +70,10 @@ export function useSocket({
       socketRef.current = null;
     }
 
-    console.log(`[useSocket] Connecting to relay at ${RELAY_URL} with code ${pairingCode}`);
+    const relayUrl = getRelayUrl();
+    console.log(`[useSocket] Connecting to relay at ${relayUrl} with code ${pairingCode}`);
 
-    const socket = io(RELAY_URL, {
+    const socket = io(relayUrl, {
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,
