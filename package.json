@@ -1,10 +1,12 @@
 {
   "name": "zecru-ai",
   "version": "0.1.0",
-  "private": true,
+  "bin": {
+    "zecru": "./bin/zecru.js"
+  },
   "scripts": {
     "dev": "concurrently -n app,relay -c blue,green \"next dev --webpack\" \"npx ts-node server/relay.ts\"",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "npx ts-node server.ts",
     "lint": "eslint",
     "zecru": "npx ts-node server.ts",
@@ -18,6 +20,8 @@
     "react-dom": "19.2.3",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
@@ -29,8 +33,6 @@
     "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
-    "ts-node": "^10.9.2",
-    "typescript": "^5"
+    "tailwindcss": "^4"
   }
 }

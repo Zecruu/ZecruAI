@@ -16,7 +16,7 @@ import * as readline from "readline";
 import * as path from "path";
 
 // --- Configuration ---
-const RELAY_URL = process.env.RELAY_URL || "http://localhost:3001";
+const RELAY_URL = process.env.RELAY_URL || "http://localhost:3000";
 
 /**
  * Get the path to the bundled Claude Code CLI.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Project } from "@/types";
 import {
   X,
@@ -17,6 +17,7 @@ import {
   Terminal,
   AlertTriangle,
   Info,
+  Laptop,
 } from "lucide-react";
 
 interface SettingsPanelProps {
@@ -29,6 +30,12 @@ interface SettingsPanelProps {
   onDaemonChanged?: () => void;
 }
 
+function isLocalhost(): boolean {
+  if (typeof window === "undefined") return true;
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
 export default function SettingsPanel({
   isOpen,
   onClose,
@@ -39,18 +46,49 @@ export default function SettingsPanel({
   onDaemonChanged,
 }: SettingsPanelProps) {
   const [copied, setCopied] = useState(false);
+  const [copiedCmd, setCopiedCmd] = useState(false);
   const [daemonLoading, setDaemonLoading] = useState(false);
   const [daemonRunning, setDaemonRunning] = useState(false);
   const [daemonError, setDaemonError] = useState<string | null>(null);
   const [showAuthGuide, setShowAuthGuide] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
   const [dangerousMode, setDangerousMode] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("zecru-dangerous-mode") === "true";
   });
 
+  const isLocal = isLocalhost();
+
+  const roomCode = activeProject
+    ? `${pairingCode}-${activeProject.id}`
+    : pairingCode;
+
+  const relayUrl = typeof window !== "undefined" ? window.location.origin : "";
+
+  const connectCommand = useMemo(() => {
+    const dangerousFlag = dangerousMode ? " --dangerous" : "";
+    return `zecru connect ${roomCode}${dangerousFlag}`;
+  }, [roomCode, dangerousMode]);
+
+  const installCommand = "npm install -g zecru-ai";
+
+  const [copiedInstall, setCopiedInstall] = useState(false);
+
+  const copyConnect = () => {
+    navigator.clipboard.writeText(connectCommand);
+    setCopiedCmd(true);
+    setTimeout(() => setCopiedCmd(false), 2000);
+  };
+
+  const copyInstall = () => {
+    navigator.clipboard.writeText(installCommand);
+    setCopiedInstall(true);
+    setTimeout(() => setCopiedInstall(false), 2000);
+  };
+
   // Check daemon status for active project on open
   useEffect(() => {
-    if (isOpen && activeProject) {
+    if (isOpen && activeProject && isLocal) {
       fetch("/api/daemon/status")
         .then((r) => r.json())
         .then((data) => {
@@ -62,7 +100,7 @@ export default function SettingsPanel({
     } else if (isOpen && !activeProject) {
       setDaemonRunning(false);
     }
-  }, [isOpen, activeProject]);
+  }, [isOpen, activeProject, isLocal]);
 
   const copyCode = () => {
     navigator.clipboard.writeText(pairingCode);
@@ -177,8 +215,8 @@ export default function SettingsPanel({
                 {isConnected
                   ? "Claude Code is ready to receive commands"
                   : activeProject
-                  ? "Activate the session below"
-                  : "Select a project first, then activate"}
+                  ? "Connect your computer below"
+                  : "Select a project first, then connect"}
               </p>
             </div>
           </div>
@@ -209,54 +247,188 @@ export default function SettingsPanel({
             )}
           </div>
 
-          {/* Activate Session */}
-          <div>
-            <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
-              <Power size={16} className="text-accent" />
-              Activate Session
-            </h3>
-            {isConnected ? (
-              <button
-                onClick={stopDaemon}
-                disabled={daemonLoading}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-danger/10 text-danger text-sm font-medium hover:bg-danger/20 active:scale-[0.98] transition-all disabled:opacity-50"
-              >
-                {daemonLoading ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <PowerOff size={18} />
-                )}
-                {daemonLoading ? "Disconnecting..." : "Disconnect"}
-              </button>
-            ) : (
-              <button
-                onClick={startDaemon}
-                disabled={daemonLoading || !activeProject}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {daemonLoading ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <Power size={18} />
-                )}
-                {daemonLoading
-                  ? "Activating Claude Session..."
-                  : "Activate Claude Session"}
-              </button>
-            )}
+          {/* Connect Session — LOCAL MODE */}
+          {isLocal && (
+            <div>
+              <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+                <Power size={16} className="text-accent" />
+                Activate Session
+              </h3>
+              {isConnected ? (
+                <button
+                  onClick={stopDaemon}
+                  disabled={daemonLoading}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-danger/10 text-danger text-sm font-medium hover:bg-danger/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  {daemonLoading ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <PowerOff size={18} />
+                  )}
+                  {daemonLoading ? "Disconnecting..." : "Disconnect"}
+                </button>
+              ) : (
+                <button
+                  onClick={startDaemon}
+                  disabled={daemonLoading || !activeProject}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {daemonLoading ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Power size={18} />
+                  )}
+                  {daemonLoading
+                    ? "Activating Claude Session..."
+                    : "Activate Claude Session"}
+                </button>
+              )}
 
-            {!activeProject && !isConnected && (
-              <p className="text-xs text-warning mt-2 text-center">
-                Select a project first
-              </p>
-            )}
+              {!activeProject && !isConnected && (
+                <p className="text-xs text-warning mt-2 text-center">
+                  Select a project first
+                </p>
+              )}
 
-            {daemonError && (
-              <p className="text-xs text-danger mt-2 text-center">
-                {daemonError}
-              </p>
-            )}
-          </div>
+              {daemonError && (
+                <p className="text-xs text-danger mt-2 text-center">
+                  {daemonError}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Connect Session — REMOTE MODE */}
+          {!isLocal && (
+            <div>
+              <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+                <Laptop size={16} className="text-accent" />
+                Connect Your Computer
+              </h3>
+
+              {isConnected ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-success/10 border border-success/20">
+                    <Check size={16} className="text-success" />
+                    <p className="text-sm text-success font-medium">
+                      Computer connected
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted text-center">
+                    To disconnect, press Ctrl+C in the terminal on your computer.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Step 1 — Install */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-foreground flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-accent/20 text-accent text-[11px] flex items-center justify-center font-bold">
+                        1
+                      </span>
+                      Install ZecruAI CLI
+                      <span className="text-muted font-normal">(one-time)</span>
+                    </p>
+                    <div className="relative">
+                      <div className="bg-surface border border-border rounded-xl px-3 py-2.5 pr-11 font-mono text-[11px] text-accent">
+                        {installCommand}
+                      </div>
+                      <button
+                        onClick={copyInstall}
+                        className="absolute top-1.5 right-1.5 w-7 h-7 rounded-lg bg-background border border-border flex items-center justify-center text-muted hover:text-foreground transition-colors"
+                      >
+                        {copiedInstall ? (
+                          <Check size={12} className="text-success" />
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Step 2 — Connect */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-foreground flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-accent/20 text-accent text-[11px] flex items-center justify-center font-bold">
+                        2
+                      </span>
+                      Open terminal in your project folder and run
+                    </p>
+                    <div className="relative">
+                      <div className="bg-surface border border-border rounded-xl px-3 py-2.5 pr-11 font-mono text-[11px] text-accent">
+                        {connectCommand}
+                      </div>
+                      <button
+                        onClick={copyConnect}
+                        className="absolute top-1.5 right-1.5 w-7 h-7 rounded-lg bg-background border border-border flex items-center justify-center text-muted hover:text-foreground transition-colors"
+                      >
+                        {copiedCmd ? (
+                          <Check size={12} className="text-success" />
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Big copy button for the connect command */}
+                  <button
+                    onClick={copyConnect}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover active:scale-[0.98] transition-all"
+                  >
+                    {copiedCmd ? (
+                      <Check size={18} />
+                    ) : (
+                      <Copy size={18} />
+                    )}
+                    {copiedCmd ? "Copied!" : "Copy Connect Command"}
+                  </button>
+
+                  {!activeProject && (
+                    <p className="text-xs text-warning text-center">
+                      Select a project first to generate your connect command
+                    </p>
+                  )}
+
+                  {/* First time help */}
+                  <button
+                    onClick={() => setShowSetup(!showSetup)}
+                    className="flex items-center gap-2 text-xs text-muted hover:text-foreground transition-colors"
+                  >
+                    <Info size={14} className="text-accent" />
+                    {showSetup ? "Hide details" : "New to Claude Code? Read this first"}
+                  </button>
+
+                  {showSetup && (
+                    <div className="bg-surface border border-border rounded-xl p-3 text-xs space-y-2">
+                      <p className="text-foreground font-medium flex items-center gap-1.5">
+                        <Terminal size={12} className="text-accent" />
+                        Prerequisites
+                      </p>
+                      <p className="text-muted">
+                        You need{" "}
+                        <span className="text-foreground">Node.js 18+</span>{" "}
+                        installed on your computer. Download it from{" "}
+                        <span className="text-accent">nodejs.org</span> if you
+                        don&apos;t have it.
+                      </p>
+                      <p className="text-muted mt-2">
+                        After installing ZecruAI CLI, you&apos;ll need to
+                        authenticate Claude Code once. Open a terminal and run:
+                      </p>
+                      <div className="bg-background rounded-lg px-3 py-2 font-mono text-[11px] text-accent">
+                        claude
+                      </div>
+                      <p className="text-muted">
+                        Follow the prompts to log in. You only need to do this
+                        once — ZecruAI uses the same credentials automatically.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Auto-Approve Mode */}
           <div className="border-t border-border pt-4">
@@ -289,47 +461,49 @@ export default function SettingsPanel({
             </p>
           </div>
 
-          {/* Auth Help */}
-          <div>
-            <button
-              onClick={() => setShowAuthGuide(!showAuthGuide)}
-              className="flex items-center gap-2 text-xs text-muted hover:text-foreground transition-colors"
-            >
-              <Info size={14} className="text-accent" />
-              {showAuthGuide
-                ? "Hide authentication guide"
-                : "First time? Authentication required"}
-            </button>
+          {/* Auth Help — only show in local mode (remote has setup guide) */}
+          {isLocal && (
+            <div>
+              <button
+                onClick={() => setShowAuthGuide(!showAuthGuide)}
+                className="flex items-center gap-2 text-xs text-muted hover:text-foreground transition-colors"
+              >
+                <Info size={14} className="text-accent" />
+                {showAuthGuide
+                  ? "Hide authentication guide"
+                  : "First time? Authentication required"}
+              </button>
 
-            {showAuthGuide && (
-              <div className="bg-surface border border-border rounded-xl p-3 mt-2 text-xs space-y-2">
-                <p className="text-foreground font-medium flex items-center gap-1.5">
-                  <Terminal size={12} className="text-accent" />
-                  One-time setup:
-                </p>
-                <p className="text-muted">
-                  Claude Code needs to be authenticated on your computer. Open
-                  any terminal and run:
-                </p>
-                <div className="bg-background rounded-lg px-3 py-2 font-mono text-[11px] text-accent">
-                  claude
+              {showAuthGuide && (
+                <div className="bg-surface border border-border rounded-xl p-3 mt-2 text-xs space-y-2">
+                  <p className="text-foreground font-medium flex items-center gap-1.5">
+                    <Terminal size={12} className="text-accent" />
+                    One-time setup:
+                  </p>
+                  <p className="text-muted">
+                    Claude Code needs to be authenticated on your computer. Open
+                    any terminal and run:
+                  </p>
+                  <div className="bg-background rounded-lg px-3 py-2 font-mono text-[11px] text-accent">
+                    claude
+                  </div>
+                  <p className="text-muted">
+                    Follow the prompts to log in. You only need to do this once
+                    — ZecruAI uses the same credentials automatically.
+                  </p>
+                  <p className="text-muted mt-2">
+                    <span className="text-foreground">
+                      Don&apos;t have Claude Code?
+                    </span>{" "}
+                    Install it first:
+                  </p>
+                  <div className="bg-background rounded-lg px-3 py-2 font-mono text-[11px] text-accent">
+                    npm install -g @anthropic-ai/claude-code
+                  </div>
                 </div>
-                <p className="text-muted">
-                  Follow the prompts to log in. You only need to do this once —
-                  ZecruAI uses the same credentials automatically.
-                </p>
-                <p className="text-muted mt-2">
-                  <span className="text-foreground">
-                    Don&apos;t have Claude Code?
-                  </span>{" "}
-                  Install it first:
-                </p>
-                <div className="bg-background rounded-lg px-3 py-2 font-mono text-[11px] text-accent">
-                  npm install -g @anthropic-ai/claude-code
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Pairing Code (advanced) */}
           <div className="border-t border-border pt-4">
@@ -371,7 +545,7 @@ export default function SettingsPanel({
             </p>
             <div className="flex items-center justify-center gap-2 text-[11px]">
               <span className="px-2 py-1 bg-accent/20 text-accent rounded-md">
-                You type
+                {isLocal ? "You type" : "Phone"}
               </span>
               <span className="text-muted">→</span>
               <span className="px-2 py-1 bg-accent/20 text-accent rounded-md">
@@ -387,8 +561,9 @@ export default function SettingsPanel({
               </span>
             </div>
             <p className="text-[11px] text-muted text-center mt-3">
-              Your messages go to Claude Code running on your computer. You see
-              everything Claude does in real-time.
+              {isLocal
+                ? "Your messages go to Claude Code running on your computer. You see everything Claude does in real-time."
+                : "Your messages are routed through ZecruAI to Claude Code running on your computer. You see everything in real-time from any device."}
             </p>
           </div>
 

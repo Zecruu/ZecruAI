@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       if (key.startsWith("MCP")) continue;
       cleanEnv[key] = val;
     }
-    cleanEnv.RELAY_URL = `http://localhost:${process.env.RELAY_PORT || 3001}`;
+    cleanEnv.RELAY_URL = process.env.RELAY_URL || `http://localhost:${process.env.PORT || 3000}`;
 
     // Room key = pairingCode-projectId for isolation
     const roomCode = `${pairingCode}-${projectId}`;
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     const daemon = fork(daemonPath, daemonArgs, {
       cwd: process.cwd(),
-      env: cleanEnv,
+      env: cleanEnv as NodeJS.ProcessEnv,
       execArgv: ["-r", "ts-node/register"],
       silent: true,
     });

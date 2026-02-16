@@ -5,7 +5,17 @@ import { io, Socket } from "socket.io-client";
 import { ConnectionStatus, Message, ActivityEvent, ResultEvent } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 
-const RELAY_URL = process.env.NEXT_PUBLIC_RELAY_URL || "http://localhost:3001";
+function getRelayUrl(): string {
+  if (process.env.NEXT_PUBLIC_RELAY_URL) {
+    return process.env.NEXT_PUBLIC_RELAY_URL;
+  }
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
+  return "http://localhost:3000";
+}
+
+const RELAY_URL = getRelayUrl();
 
 interface UseSocketOptions {
   pairingCode: string;
