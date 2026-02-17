@@ -1,7 +1,7 @@
 "use client";
 
 import { Conversation } from "@/types";
-import { X, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { X, MessageSquare, Plus, Trash2, Clock } from "lucide-react";
 
 interface ConversationSidebarProps {
   isOpen: boolean;
@@ -128,6 +128,14 @@ export default function ConversationSidebar({
               );
             })
           )}
+        </div>
+
+        {/* 7-day notice */}
+        <div className="px-4 py-3 border-t border-border">
+          <p className="text-[11px] text-muted flex items-center gap-1.5">
+            <Clock size={11} className="flex-shrink-0" />
+            Conversations auto-delete after 7 days
+          </p>
         </div>
       </div>
     </div>
