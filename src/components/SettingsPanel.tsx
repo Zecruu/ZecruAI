@@ -7,7 +7,6 @@ import {
   Copy,
   Check,
   Monitor,
-  RefreshCw,
   FolderOpen,
   Power,
   PowerOff,
@@ -18,16 +17,21 @@ import {
   AlertTriangle,
   Info,
   Laptop,
+  LogOut,
+  User,
 } from "lucide-react";
 
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
   pairingCode: string;
-  onRegenerateCode: () => void;
   activeProject: Project | null;
   daemonConnected?: boolean;
   onDaemonChanged?: () => void;
+  dangerousMode: boolean;
+  onDangerousModeChange: (value: boolean) => void;
+  userEmail?: string;
+  onLogout?: () => void;
 }
 
 function isLocalhost(): boolean {
@@ -40,10 +44,13 @@ export default function SettingsPanel({
   isOpen,
   onClose,
   pairingCode,
-  onRegenerateCode,
   activeProject,
   daemonConnected,
   onDaemonChanged,
+  dangerousMode,
+  onDangerousModeChange,
+  userEmail,
+  onLogout,
 }: SettingsPanelProps) {
   const [copied, setCopied] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
@@ -52,19 +59,8 @@ export default function SettingsPanel({
   const [daemonError, setDaemonError] = useState<string | null>(null);
   const [showAuthGuide, setShowAuthGuide] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
-  const [dangerousMode, setDangerousMode] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem("zecru-dangerous-mode") === "true";
-  });
 
   const isLocal = isLocalhost();
-
-  // Remote mode: use base pairing code (no project suffix) so the daemon
-  // and web app join the same room without needing matching project IDs.
-  // Local mode: include project ID for multi-project isolation.
-  const roomCode = isLocal && activeProject
-    ? `${pairingCode}-${activeProject.id}`
-    : pairingCode;
 
   const connectCommand = useMemo(() => {
     const dangerousFlag = dangerousMode ? " --dangerous" : "";
@@ -138,8 +134,8 @@ export default function SettingsPanel({
       } else {
         setDaemonError(data.error || "Failed to start daemon");
       }
-    } catch (err: any) {
-      setDaemonError(`Connection error: ${err.message}`);
+    } catch (err: unknown) {
+      setDaemonError(`Connection error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setDaemonLoading(false);
     }
@@ -191,6 +187,30 @@ export default function SettingsPanel({
 
         {/* Content */}
         <div className="px-5 py-4 space-y-6">
+          {/* Account Info */}
+          {userEmail && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-accent/20 flex items-center justify-center">
+                  <User size={16} className="text-accent" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">{userEmail}</p>
+                  <p className="text-[11px] text-muted">Signed in</p>
+                </div>
+              </div>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted hover:text-danger hover:bg-surface transition-colors"
+                >
+                  <LogOut size={14} />
+                  Sign out
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Connection Status Banner */}
           <div
             className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
@@ -439,11 +459,7 @@ export default function SettingsPanel({
                 Auto-Approve All Actions
               </h3>
               <button
-                onClick={() => {
-                  const next = !dangerousMode;
-                  setDangerousMode(next);
-                  localStorage.setItem("zecru-dangerous-mode", String(next));
-                }}
+                onClick={() => onDangerousModeChange(!dangerousMode)}
                 className={`relative w-10 h-5 rounded-full transition-colors ${
                   dangerousMode ? "bg-warning" : "bg-border"
                 }`}
@@ -462,7 +478,7 @@ export default function SettingsPanel({
             </p>
           </div>
 
-          {/* Auth Help — only show in local mode (remote has setup guide) */}
+          {/* Auth Help — only show in local mode */}
           {isLocal && (
             <div>
               <button
@@ -506,18 +522,18 @@ export default function SettingsPanel({
             </div>
           )}
 
-          {/* Pairing Code (advanced) */}
+          {/* Pairing Code */}
           <div className="border-t border-border pt-4">
             <h3 className="text-sm font-medium text-foreground mb-1 flex items-center gap-2">
               <Monitor size={16} className="text-accent" />
               Pairing Code
             </h3>
             <p className="text-xs text-muted mb-3">
-              Use this code to connect from another device.
+              Your unique pairing code. Use it to connect the CLI daemon.
             </p>
             <div className="flex items-center gap-2">
               <div className="flex-1 bg-surface border border-border rounded-xl px-4 py-3 font-mono text-lg text-center tracking-[0.3em] text-accent">
-                {pairingCode}
+                {pairingCode || "---"}
               </div>
               <button
                 onClick={copyCode}
@@ -528,13 +544,6 @@ export default function SettingsPanel({
                 ) : (
                   <Copy size={16} />
                 )}
-              </button>
-              <button
-                onClick={onRegenerateCode}
-                className="w-11 h-11 rounded-xl bg-surface border border-border flex items-center justify-center text-muted hover:text-foreground transition-colors"
-                title="Generate new code"
-              >
-                <RefreshCw size={16} />
               </button>
             </div>
           </div>
@@ -570,7 +579,7 @@ export default function SettingsPanel({
 
           {/* App info */}
           <div className="text-center pt-2 pb-4">
-            <p className="text-xs text-muted">ZecruAI v0.1.0</p>
+            <p className="text-xs text-muted">ZecruAI v0.1.1</p>
           </div>
         </div>
       </div>

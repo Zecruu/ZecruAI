@@ -61,3 +61,11 @@ export interface ResultEvent {
   durationMs: number;
   sessionId: string | null;
 }
+
+export interface User {
+  id: string;
+  email: string;
+  pairingCode: string;
+  dangerousMode: boolean;
+  createdAt: number;
+}

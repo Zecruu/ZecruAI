@@ -5,13 +5,13 @@ import { v4 as uuidv4 } from "uuid";
 import {
   TabMode,
   Message,
-  ConnectionStatus,
   ActivityEvent,
   ResultEvent,
   Conversation,
   Project,
 } from "@/types";
 import { useSocket } from "@/hooks/useSocket";
+import { useAuth } from "@/hooks/useAuth";
 import Header from "@/components/Header";
 import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
@@ -21,44 +21,12 @@ import SettingsPanel from "@/components/SettingsPanel";
 import ConversationSidebar from "@/components/ConversationSidebar";
 import ProjectSidebar from "@/components/ProjectSidebar";
 
-function generatePairingCode(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
-
-// --- localStorage helpers ---
-function loadConversations(): Conversation[] {
-  try {
-    const raw = localStorage.getItem("zecru-conversations");
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveConversations(convos: Conversation[]) {
-  localStorage.setItem("zecru-conversations", JSON.stringify(convos));
-}
-
-function loadProjects(): Project[] {
-  try {
-    const raw = localStorage.getItem("zecru-projects");
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveProjects(projects: Project[]) {
-  localStorage.setItem("zecru-projects", JSON.stringify(projects));
-}
-
 function generateTitle(firstMessage: string): string {
   const clean = firstMessage.replace(/\n/g, " ").trim();
   return clean.length > 50 ? clean.substring(0, 50) + "..." : clean;
 }
 
 function generateSummary(assistantMessage: string): string {
-  // Take the first meaningful line of the assistant's response
   const lines = assistantMessage.split("\n").filter((l) => l.trim());
   const firstLine = lines[0]?.trim() || "";
   return firstLine.length > 80
@@ -67,47 +35,50 @@ function generateSummary(assistantMessage: string): string {
 }
 
 export default function Home() {
+  const { user, loading: authLoading, logout } = useAuth();
+
   const [activeTab, setActiveTab] = useState<TabMode>("user");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
-  const [pairingCode, setPairingCode] = useState("");
-  const [currentActivity, setCurrentActivity] = useState<ActivityEvent | null>(
-    null
-  );
+  const [currentActivity, setCurrentActivity] = useState<ActivityEvent | null>(null);
   const [sessionActivated, setSessionActivated] = useState(false);
   const [dangerousMode, setDangerousMode] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   // Project state
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [connectedProjectIds, setConnectedProjectIds] = useState<Set<string>>(
-    new Set()
-  );
+  const [connectedProjectIds, setConnectedProjectIds] = useState<Set<string>>(new Set());
 
   // Conversation history
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<
-    string | null
-  >(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Derive active project and effective pairing code for socket
-  const activeProject =
-    projects.find((p) => p.id === activeProjectId) || null;
+  // Pairing code comes from user account
+  const pairingCode = user?.pairingCode || "";
+
+  // Derive active project
+  const activeProject = projects.find((p) => p.id === activeProjectId) || null;
 
   // Local mode: include project ID for multi-project isolation
   // Remote mode: use base pairing code only (daemon connects with base code)
-  const isLocal = typeof window !== "undefined" &&
+  const isLocal =
+    typeof window !== "undefined" &&
     (window.location.hostname === "localhost" ||
-     window.location.hostname === "127.0.0.1" ||
-     window.location.hostname === "::1");
-  const effectivePairingCode = isLocal && activeProjectId
-    ? `${pairingCode}-${activeProjectId}`
-    : pairingCode;
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname === "::1");
+  const effectivePairingCode =
+    isLocal && activeProjectId
+      ? `${pairingCode}-${activeProjectId}`
+      : pairingCode;
+
+  // Ref to track save debounce
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refresh which daemons are running from the status API
   const refreshDaemonStatus = useCallback(async () => {
@@ -117,7 +88,7 @@ export default function Home() {
       if (data.daemons) {
         const ids = new Set<string>(
           Object.entries(data.daemons)
-            .filter(([, d]: [string, any]) => d.running)
+            .filter(([, d]: [string, unknown]) => (d as { running: boolean }).running)
             .map(([id]) => id)
         );
         setConnectedProjectIds(ids);
@@ -127,7 +98,7 @@ export default function Home() {
     }
   }, []);
 
-  // Real WebSocket connection — uses effectivePairingCode so switching projects reconnects
+  // Real WebSocket connection
   const {
     connectionStatus,
     sendMessage: socketSendMessage,
@@ -147,7 +118,6 @@ export default function Home() {
     }, []),
     onActivity: useCallback((activity: ActivityEvent) => {
       setCurrentActivity(activity);
-      // Show tool_use activities as inline status messages
       if (activity.type === "tool_use" && activity.message) {
         setMessages((prev) => [
           ...prev,
@@ -177,16 +147,20 @@ export default function Home() {
           ]);
         }
         // Save sessionId to active conversation for --resume
-        if (result.sessionId) {
-          setConversations((prev) => {
-            const updated = prev.map((c) =>
+        if (result.sessionId && activeConversationId) {
+          fetch(`/api/conversations/${activeConversationId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId: result.sessionId }),
+          }).catch(() => {});
+
+          setConversations((prev) =>
+            prev.map((c) =>
               c.id === activeConversationId
                 ? { ...c, sessionId: result.sessionId! }
                 : c
-            );
-            saveConversations(updated);
-            return updated;
-          });
+            )
+          );
         }
         setCurrentActivity(null);
       },
@@ -228,123 +202,111 @@ export default function Home() {
     }
   }, [connectionStatus.daemon, sessionActivated]);
 
-  // Load stored settings on mount
+  // Load data from API on mount (when user is available)
   useEffect(() => {
-    const storedCode = localStorage.getItem("zecru-pairing-code");
-    if (storedCode) {
-      setPairingCode(storedCode);
-    } else {
-      const code = generatePairingCode();
-      setPairingCode(code);
-      localStorage.setItem("zecru-pairing-code", code);
-    }
+    if (!user || dataLoaded) return;
 
-    setDangerousMode(localStorage.getItem("zecru-dangerous-mode") === "true");
+    setDangerousMode(user.dangerousMode);
 
-    // Load projects
-    const storedProjects = loadProjects();
-    setProjects(storedProjects);
+    // Fetch projects and conversations from API
+    Promise.all([
+      fetch("/api/projects").then((r) => r.json()),
+      fetch("/api/conversations").then((r) => r.json()),
+    ])
+      .then(([projectsData, conversationsData]) => {
+        const loadedProjects: Project[] = projectsData.projects || [];
+        setProjects(loadedProjects);
 
-    const storedProjectId = localStorage.getItem("zecru-active-project-id");
-    if (
-      storedProjectId &&
-      storedProjects.some((p) => p.id === storedProjectId)
-    ) {
-      setActiveProjectId(storedProjectId);
-    }
+        const loadedConversations: Conversation[] = conversationsData.conversations || [];
+        setConversations(loadedConversations);
 
-    // Load conversations and restore last active
-    const convos = loadConversations();
-    setConversations(convos);
+        // Auto-select first project if any
+        if (loadedProjects.length > 0) {
+          setActiveProjectId(loadedProjects[0].id);
+        }
 
-    const lastActiveId = localStorage.getItem("zecru-active-conversation");
-    if (lastActiveId) {
-      const lastConvo = convos.find((c) => c.id === lastActiveId);
-      if (lastConvo) {
-        setMessages(lastConvo.messages);
-        setActiveConversationId(lastConvo.id);
-        setActiveTab(lastConvo.mode);
-      }
-    }
+        setDataLoaded(true);
+      })
+      .catch(() => {
+        setDataLoaded(true);
+      });
 
-    // Check daemon status
     refreshDaemonStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user]);
 
-  // Persist active conversation ID
-  useEffect(() => {
-    if (activeConversationId) {
-      localStorage.setItem("zecru-active-conversation", activeConversationId);
-    } else {
-      localStorage.removeItem("zecru-active-conversation");
-    }
-  }, [activeConversationId]);
-
-  // Persist active project ID
-  useEffect(() => {
-    if (activeProjectId) {
-      localStorage.setItem("zecru-active-project-id", activeProjectId);
-    } else {
-      localStorage.removeItem("zecru-active-project-id");
-    }
-  }, [activeProjectId]);
-
-  // Save current messages to active conversation whenever messages change
+  // Save current messages to active conversation whenever messages change (debounced)
   useEffect(() => {
     if (activeTab !== "developer") return;
     if (messages.length === 0) return;
+    if (!dataLoaded) return;
 
-    setConversations((prev) => {
-      let updated: Conversation[];
-
+    // Debounce saves to avoid hammering the API
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
       if (activeConversationId) {
-        // Update existing conversation — also fill in summary if missing
-        updated = prev.map((c) => {
-          if (c.id !== activeConversationId) return c;
-          const patch: Partial<Conversation> = {
-            messages,
-            updatedAt: Date.now(),
-          };
-          if (!c.summary) {
-            const firstAssistant = messages.find(
-              (m) => m.role === "assistant" && m.type !== "error"
-            );
-            if (firstAssistant) {
-              patch.summary = generateSummary(firstAssistant.content);
-            }
+        // Update existing conversation
+        const convo = conversations.find((c) => c.id === activeConversationId);
+        const patch: Record<string, unknown> = { messages };
+        if (convo && !convo.summary) {
+          const firstAssistant = messages.find(
+            (m) => m.role === "assistant" && m.type !== "error"
+          );
+          if (firstAssistant) {
+            patch.summary = generateSummary(firstAssistant.content);
           }
-          return { ...c, ...patch };
-        });
+        }
+        fetch(`/api/conversations/${activeConversationId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        }).catch(() => {});
+
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === activeConversationId
+              ? { ...c, messages, updatedAt: Date.now(), ...(patch.summary ? { summary: patch.summary as string } : {}) }
+              : c
+          )
+        );
       } else {
         // Create new conversation from first user message
         const firstUserMsg = messages.find((m) => m.role === "user");
-        if (!firstUserMsg) return prev;
+        if (!firstUserMsg) return;
 
         const firstAssistant = messages.find(
           (m) => m.role === "assistant" && m.type !== "error"
         );
 
-        const newConvo: Conversation = {
-          id: uuidv4(),
-          title: generateTitle(firstUserMsg.content),
-          summary: firstAssistant
-            ? generateSummary(firstAssistant.content)
-            : undefined,
-          mode: "developer",
-          messages,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          projectId: activeProjectId || undefined,
-        };
-        setActiveConversationId(newConvo.id);
-        updated = [...prev, newConvo];
-      }
+        const title = generateTitle(firstUserMsg.content);
+        const summary = firstAssistant ? generateSummary(firstAssistant.content) : "";
 
-      saveConversations(updated);
-      return updated;
-    });
-  }, [messages, activeTab, activeConversationId, activeProjectId]);
+        fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            summary,
+            mode: "developer",
+            messages,
+            projectId: activeProjectId || null,
+          }),
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.conversation) {
+              setActiveConversationId(data.conversation.id);
+              setConversations((prev) => [...prev, data.conversation]);
+            }
+          })
+          .catch(() => {});
+      }
+    }, 1000);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [messages, activeTab, activeConversationId, activeProjectId, conversations, dataLoaded]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -353,25 +315,27 @@ export default function Home() {
 
   // --- Project handlers ---
   const handleAddProject = useCallback(
-    (name: string, workingDirectory: string) => {
-      const newProject: Project = {
-        id: uuidv4(),
-        name,
-        workingDirectory,
-        createdAt: Date.now(),
-      };
-      setProjects((prev) => {
-        const updated = [...prev, newProject];
-        saveProjects(updated);
-        return updated;
-      });
-      setActiveProjectId(newProject.id);
+    async (name: string, workingDirectory: string) => {
+      try {
+        const res = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, workingDirectory }),
+        });
+        const data = await res.json();
+        if (data.project) {
+          setProjects((prev) => [...prev, data.project]);
+          setActiveProjectId(data.project.id);
+        }
+      } catch {
+        // ignore
+      }
     },
     []
   );
 
   const handleDeleteProject = useCallback(
-    (id: string) => {
+    async (id: string) => {
       // Stop daemon for this project
       fetch("/api/daemon/stop", {
         method: "POST",
@@ -379,11 +343,11 @@ export default function Home() {
         body: JSON.stringify({ projectId: id }),
       }).catch(() => {});
 
-      setProjects((prev) => {
-        const updated = prev.filter((p) => p.id !== id);
-        saveProjects(updated);
-        return updated;
-      });
+      // Delete from API
+      fetch(`/api/projects/${id}`, { method: "DELETE" }).catch(() => {});
+
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setConversations((prev) => prev.filter((c) => c.projectId !== id));
       setConnectedProjectIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -401,7 +365,6 @@ export default function Home() {
   const handleSelectProject = useCallback((id: string) => {
     setActiveProjectId(id);
     setProjectsOpen(false);
-    // Clear chat for new project context
     setMessages([]);
     setActiveConversationId(null);
     setCurrentActivity(null);
@@ -447,7 +410,6 @@ export default function Home() {
       } else {
         setMessages((prev) => [...prev, userMessage]);
         setIsTyping(true);
-        // User mode - placeholder
         setTimeout(() => {
           setIsTyping(false);
           const aiMessage: Message = {
@@ -499,26 +461,23 @@ export default function Home() {
   }, []);
 
   const handleSelectConversation = useCallback((id: string) => {
-    const convo = loadConversations().find((c) => c.id === id);
+    const convo = conversations.find((c) => c.id === id);
     if (convo) {
       setMessages(convo.messages);
       setActiveConversationId(id);
       setActiveTab(convo.mode);
       setCurrentActivity(null);
-      // Switch to the conversation's project if it has one
       if (convo.projectId) {
         setActiveProjectId(convo.projectId);
       }
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations]);
 
   const handleDeleteConversation = useCallback(
     (id: string) => {
-      setConversations((prev) => {
-        const updated = prev.filter((c) => c.id !== id);
-        saveConversations(updated);
-        return updated;
-      });
+      fetch(`/api/conversations/${id}`, { method: "DELETE" }).catch(() => {});
+      setConversations((prev) => prev.filter((c) => c.id !== id));
       if (id === activeConversationId) {
         setMessages([]);
         setActiveConversationId(null);
@@ -527,18 +486,30 @@ export default function Home() {
     [activeConversationId]
   );
 
-  const handleRegenerateCode = useCallback(() => {
-    const code = generatePairingCode();
-    setPairingCode(code);
-    localStorage.setItem("zecru-pairing-code", code);
+  const handleDangerousModeChange = useCallback((value: boolean) => {
+    setDangerousMode(value);
+    fetch("/api/user/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dangerousMode: value }),
+    }).catch(() => {});
   }, []);
 
-  // Filter conversations for current project (show untagged ones too)
+  // Filter conversations for current project
   const filteredConversations = activeProjectId
     ? conversations.filter(
         (c) => c.projectId === activeProjectId || !c.projectId
       )
     : conversations;
+
+  // Loading state
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-dvh bg-background">
+        <div className="text-muted text-sm">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-dvh bg-background">
@@ -553,6 +524,8 @@ export default function Home() {
         activeProjectName={activeProject?.name}
         sessionActive={sessionActivated}
         dangerousMode={dangerousMode}
+        userEmail={user?.email}
+        onLogout={logout}
       />
 
       {/* Messages area */}
@@ -620,17 +593,15 @@ export default function Home() {
       {/* Settings Panel */}
       <SettingsPanel
         isOpen={settingsOpen}
-        onClose={() => {
-          setSettingsOpen(false);
-          setDangerousMode(
-            localStorage.getItem("zecru-dangerous-mode") === "true"
-          );
-        }}
+        onClose={() => setSettingsOpen(false)}
         pairingCode={pairingCode}
-        onRegenerateCode={handleRegenerateCode}
         activeProject={activeProject}
         daemonConnected={connectionStatus.daemon === "connected"}
         onDaemonChanged={refreshDaemonStatus}
+        dangerousMode={dangerousMode}
+        onDangerousModeChange={handleDangerousModeChange}
+        userEmail={user?.email}
+        onLogout={logout}
       />
     </div>
   );

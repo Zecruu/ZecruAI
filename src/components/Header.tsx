@@ -3,7 +3,7 @@
 import { TabMode, ConnectionStatus } from "@/types";
 import TabSwitcher from "./TabSwitcher";
 import ConnectionBadge from "./ConnectionBadge";
-import { Settings, MessageSquarePlus, FolderOpen, History } from "lucide-react";
+import { Settings, MessageSquarePlus, FolderOpen, History, LogOut } from "lucide-react";
 
 interface HeaderProps {
   activeTab: TabMode;
@@ -16,6 +16,8 @@ interface HeaderProps {
   activeProjectName?: string;
   sessionActive?: boolean;
   dangerousMode?: boolean;
+  userEmail?: string;
+  onLogout?: () => void;
 }
 
 export default function Header({
@@ -29,6 +31,8 @@ export default function Header({
   activeProjectName,
   sessionActive,
   dangerousMode,
+  userEmail,
+  onLogout,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border safe-top">
@@ -96,6 +100,15 @@ export default function Header({
           >
             <Settings size={18} />
           </button>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-danger hover:bg-surface transition-colors"
+              title={userEmail ? `Sign out (${userEmail})` : "Sign out"}
+            >
+              <LogOut size={18} />
+            </button>
+          )}
         </div>
       </div>
 
