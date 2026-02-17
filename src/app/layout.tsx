@@ -16,10 +16,30 @@ export const metadata: Metadata = {
   title: "ZecruAI",
   description: "Your AI agent — simple for everyone, powerful for developers.",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "ZecruAI",
+  },
+  metadataBase: new URL("https://www.zecruai.com"),
+  openGraph: {
+    title: "ZecruAI",
+    description: "Your AI agent — simple for everyone, powerful for developers.",
+    url: "https://www.zecruai.com",
+    siteName: "ZecruAI",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "ZecruAI",
+    description: "Your AI agent — simple for everyone, powerful for developers.",
   },
 };
 

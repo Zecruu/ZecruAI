@@ -11,7 +11,11 @@ export function middleware(req: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname === "/manifest.json" ||
-    pathname.startsWith("/icons")
+    pathname === "/sitemap.xml" ||
+    pathname === "/robots.txt" ||
+    pathname.startsWith("/icons") ||
+    pathname.startsWith("/android-chrome") ||
+    pathname.startsWith("/apple-touch-icon")
   ) {
     return NextResponse.next();
   }
