@@ -45,7 +45,7 @@ function parseArgs() {
   }
 
   if (command === "version" || command === "--version" || command === "-v") {
-    console.log("zecru-ai v0.1.2");
+    console.log("zecru-ai v0.1.3");
     process.exit(0);
   }
 
@@ -282,12 +282,13 @@ class ClaudeCodeBridge {
       }
       case "result": {
         if (event.session_id) this.conversationId = event.session_id;
-        const costStr = event.total_cost_usd != null ? `$${event.total_cost_usd.toFixed(4)}` : "?";
-        console.log(`  ${c.magenta}[result]${c.reset} ${event.is_error ? "ERROR" : "OK"} cost=${costStr}`);
+        const tokens = (event.input_tokens || 0) + (event.output_tokens || 0);
+        const tokenStr = tokens > 0 ? `${tokens} tokens` : "";
+        console.log(`  ${c.magenta}[result]${c.reset} ${event.is_error ? "ERROR" : "OK"}${tokenStr ? ` ${tokenStr}` : ""}`);
         if (event.result) {
           this.socket.emit("daemon:result", {
             text: event.result, isError: event.is_error || false,
-            costUsd: event.total_cost_usd || 0, durationMs: event.duration_ms || 0,
+            tokens: tokens, durationMs: event.duration_ms || 0,
             sessionId: event.session_id || null,
           });
         }
@@ -472,7 +473,7 @@ async function main() {
 
   // Banner
   console.log(`
-  ${c.bold}${c.cyan}ZecruAI${c.reset} ${c.dim}v0.1.2${c.reset}
+  ${c.bold}${c.cyan}ZecruAI${c.reset} ${c.dim}v0.1.3${c.reset}
   ${c.dim}────────────────────────────${c.reset}
   ${c.bold}Engine:${c.reset}    ${engineColor}${engineLabel}${c.reset}
   ${c.bold}Code:${c.reset}      ${c.cyan}${pairingCode}${c.reset}

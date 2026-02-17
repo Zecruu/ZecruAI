@@ -57,7 +57,7 @@ export interface ActivityEvent {
 export interface ResultEvent {
   text: string;
   isError: boolean;
-  costUsd: number;
+  tokens: number;
   durationMs: number;
   sessionId: string | null;
 }

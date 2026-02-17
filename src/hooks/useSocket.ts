@@ -152,9 +152,9 @@ export function useSocket({
       onTypingStartRef.current();
     });
 
-    // Final result event (with cost, duration, session ID)
+    // Final result event (with tokens, duration, session ID)
     socket.on("client:result", (data: ResultEvent) => {
-      console.log("[useSocket] Result:", data.isError ? "ERROR" : "OK", `$${data.costUsd.toFixed(4)}`);
+      console.log("[useSocket] Result:", data.isError ? "ERROR" : "OK", data.tokens ? `${data.tokens} tokens` : "");
       onResultRef.current(data);
 
       // If the result has text and we haven't already streamed it, emit as message
