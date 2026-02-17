@@ -6,6 +6,7 @@ import {
   X,
   Copy,
   Check,
+  Heart,
   Monitor,
   FolderOpen,
   Power,
@@ -577,9 +578,25 @@ export default function SettingsPanel({
             </p>
           </div>
 
+          {/* Support Us */}
+          <div className="border-t border-border pt-4">
+            <a
+              href="https://ko-fi.com/zecruai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#FF5E5B] hover:bg-[#e54e4b] text-white text-sm font-medium active:scale-[0.98] transition-all"
+            >
+              <Heart size={18} />
+              Support Us on Ko-fi
+            </a>
+            <p className="text-[11px] text-muted text-center mt-2">
+              Help us keep ZecruAI free and open source
+            </p>
+          </div>
+
           {/* App info */}
           <div className="text-center pt-2 pb-4">
-            <p className="text-xs text-muted">ZecruAI v0.1.1</p>
+            <p className="text-xs text-muted">ZecruAI v0.1.3</p>
           </div>
         </div>
       </div>
