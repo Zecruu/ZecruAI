@@ -19,6 +19,7 @@ export async function getDb(): Promise<Db> {
   await db.collection("users").createIndex({ pairingCode: 1 }, { unique: true });
   await db.collection("projects").createIndex({ userId: 1 });
   await db.collection("conversations").createIndex({ userId: 1, projectId: 1 });
+  await db.collection("conversations").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
   return db;
 }

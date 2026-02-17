@@ -42,17 +42,19 @@ export async function POST(req: NextRequest) {
   const db = await getDb();
 
   const now = Date.now();
+  const expiresAt = new Date(now + 7 * 24 * 60 * 60 * 1000); // 7 days
   const conversation = {
     _id: new ObjectId(),
     userId: user.id,
     projectId: body.projectId || null,
     title: body.title || "New Conversation",
     summary: body.summary || "",
-    mode: body.mode || "user",
+    mode: body.mode || "developer",
     messages: body.messages || [],
     sessionId: body.sessionId || null,
     createdAt: now,
     updatedAt: now,
+    expiresAt,
   };
 
   await db.collection("conversations").insertOne(conversation);
