@@ -104,7 +104,16 @@ export default function Home() {
   } = useSocket({
     pairingCode: effectivePairingCode,
     onMessage: useCallback((msg: Message) => {
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => {
+        // Avoid duplicate if message with same ID already exists (from streaming)
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
+    }, []),
+    onStreamUpdate: useCallback((id: string, content: string) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, content } : m))
+      );
     }, []),
     onPermissionRequest: useCallback((msg: Message) => {
       setMessages((prev) => [...prev, msg]);

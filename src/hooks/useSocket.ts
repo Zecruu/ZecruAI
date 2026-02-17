@@ -18,6 +18,7 @@ function getRelayUrl(): string {
 interface UseSocketOptions {
   pairingCode: string;
   onMessage: (message: Message) => void;
+  onStreamUpdate: (id: string, content: string) => void;
   onPermissionRequest: (message: Message) => void;
   onTypingStart: () => void;
   onTypingEnd: () => void;
@@ -28,6 +29,7 @@ interface UseSocketOptions {
 export function useSocket({
   pairingCode,
   onMessage,
+  onStreamUpdate,
   onPermissionRequest,
   onTypingStart,
   onTypingEnd,
@@ -40,9 +42,11 @@ export function useSocket({
     relay: "disconnected",
   });
   const responseBufferRef = useRef<string>("");
+  const streamingIdRef = useRef<string | null>(null);
 
   // Store callbacks in refs so we don't get stale closures
   const onMessageRef = useRef(onMessage);
+  const onStreamUpdateRef = useRef(onStreamUpdate);
   const onPermissionRequestRef = useRef(onPermissionRequest);
   const onTypingStartRef = useRef(onTypingStart);
   const onTypingEndRef = useRef(onTypingEnd);
@@ -50,6 +54,7 @@ export function useSocket({
   const onResultRef = useRef(onResult);
 
   onMessageRef.current = onMessage;
+  onStreamUpdateRef.current = onStreamUpdate;
   onPermissionRequestRef.current = onPermissionRequest;
   onTypingStartRef.current = onTypingStart;
   onTypingEndRef.current = onTypingEnd;
@@ -119,13 +124,15 @@ export function useSocket({
           type: "error",
         });
         responseBufferRef.current = "";
+        streamingIdRef.current = null;
         return;
       }
 
       if (data.done) {
         onTypingEndRef.current();
-        // If we have buffered text, emit it as a message
-        if (responseBufferRef.current) {
+        // Finalize — if we were streaming, the message is already in the list
+        // If somehow we have buffer but no streaming ID, emit it
+        if (responseBufferRef.current && !streamingIdRef.current) {
           onMessageRef.current({
             id: uuidv4(),
             role: "assistant",
@@ -135,11 +142,29 @@ export function useSocket({
           });
         }
         responseBufferRef.current = "";
+        streamingIdRef.current = null;
         return;
       }
 
       if (data.content) {
         responseBufferRef.current += data.content;
+
+        if (!streamingIdRef.current) {
+          // First chunk — create the message
+          const id = uuidv4();
+          streamingIdRef.current = id;
+          onMessageRef.current({
+            id,
+            role: "assistant",
+            content: responseBufferRef.current,
+            timestamp: Date.now(),
+            type: "text",
+          });
+        } else {
+          // Subsequent chunks — update the existing message
+          onStreamUpdateRef.current(streamingIdRef.current, responseBufferRef.current);
+        }
+
         onTypingStartRef.current();
       }
     });
@@ -158,7 +183,7 @@ export function useSocket({
       onResultRef.current(data);
 
       // If the result has text and we haven't already streamed it, emit as message
-      if (data.text && !responseBufferRef.current) {
+      if (data.text && !streamingIdRef.current && !responseBufferRef.current) {
         onMessageRef.current({
           id: uuidv4(),
           role: "assistant",
