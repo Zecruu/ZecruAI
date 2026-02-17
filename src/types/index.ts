@@ -1,4 +1,4 @@
-export type TabMode = "user" | "developer";
+export type TabMode = "developer";
 
 export interface Message {
   id: string;

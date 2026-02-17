@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 import {
-  TabMode,
   Message,
   ActivityEvent,
   ResultEvent,
@@ -37,7 +36,6 @@ function generateSummary(assistantMessage: string): string {
 export default function Home() {
   const { user, loading: authLoading, logout } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<TabMode>("user");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -237,7 +235,6 @@ export default function Home() {
 
   // Save current messages to active conversation whenever messages change (debounced)
   useEffect(() => {
-    if (activeTab !== "developer") return;
     if (messages.length === 0) return;
     if (!dataLoaded) return;
 
@@ -306,7 +303,7 @@ export default function Home() {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [messages, activeTab, activeConversationId, activeProjectId, conversations, dataLoaded]);
+  }, [messages, activeConversationId, activeProjectId, conversations, dataLoaded]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -381,50 +378,33 @@ export default function Home() {
         type: "text",
       };
 
-      if (activeTab === "developer") {
-        setMessages((prev) => [...prev, userMessage]);
-        setIsTyping(true);
-        setCurrentActivity({
-          type: "status",
-          message: "Sending to Claude...",
-        });
+      setMessages((prev) => [...prev, userMessage]);
+      setIsTyping(true);
+      setCurrentActivity({
+        type: "status",
+        message: "Sending to Claude...",
+      });
 
-        if (connectionStatus.daemon === "connected") {
-          const activeConvo = conversations.find(
-            (c) => c.id === activeConversationId
-          );
-          socketSendMessage(content, activeConvo?.sessionId);
-        } else {
-          setIsTyping(false);
-          setCurrentActivity(null);
-          const errorMsg: Message = {
-            id: uuidv4(),
-            role: "assistant",
-            content:
-              "Your computer's daemon isn't connected. Open Settings and activate a Claude session for your project.",
-            timestamp: Date.now(),
-            type: "error",
-          };
-          setMessages((prev) => [...prev, errorMsg]);
-        }
+      if (connectionStatus.daemon === "connected") {
+        const activeConvo = conversations.find(
+          (c) => c.id === activeConversationId
+        );
+        socketSendMessage(content, activeConvo?.sessionId);
       } else {
-        setMessages((prev) => [...prev, userMessage]);
-        setIsTyping(true);
-        setTimeout(() => {
-          setIsTyping(false);
-          const aiMessage: Message = {
-            id: uuidv4(),
-            role: "assistant",
-            content: `I'd be happy to help with that! This is a demo response — once the Claude API is connected, I'll give you real answers.\n\nYou said: "${content}"`,
-            timestamp: Date.now(),
-            type: "text",
-          };
-          setMessages((prev) => [...prev, aiMessage]);
-        }, 1200);
+        setIsTyping(false);
+        setCurrentActivity(null);
+        const errorMsg: Message = {
+          id: uuidv4(),
+          role: "assistant",
+          content:
+            "Your computer's daemon isn't connected. Open Settings and activate a Claude session for your project.",
+          timestamp: Date.now(),
+          type: "error",
+        };
+        setMessages((prev) => [...prev, errorMsg]);
       }
     },
     [
-      activeTab,
       connectionStatus.daemon,
       socketSendMessage,
       conversations,
@@ -465,7 +445,6 @@ export default function Home() {
     if (convo) {
       setMessages(convo.messages);
       setActiveConversationId(id);
-      setActiveTab(convo.mode);
       setCurrentActivity(null);
       if (convo.projectId) {
         setActiveProjectId(convo.projectId);
@@ -514,8 +493,6 @@ export default function Home() {
   return (
     <div className="flex flex-col h-dvh bg-background">
       <Header
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
         connectionStatus={connectionStatus}
         onNewChat={handleNewChat}
         onSettings={() => setSettingsOpen(true)}
@@ -531,16 +508,14 @@ export default function Home() {
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <EmptyState mode={activeTab} />
+          <EmptyState />
         ) : (
           <div className="max-w-3xl mx-auto">
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}
                 message={msg}
-                onPermission={
-                  activeTab === "developer" ? handlePermission : undefined
-                }
+                onPermission={handlePermission}
               />
             ))}
             {isTyping && <TypingIndicator activity={currentActivity} />}
@@ -555,13 +530,11 @@ export default function Home() {
           <ChatInput
             onSend={handleSend}
             placeholder={
-              activeTab === "developer"
-                ? connectionStatus.daemon === "connected"
-                  ? "Send a command to Claude Code..."
-                  : activeProject
-                  ? "Activate session in Settings..."
-                  : "Add a project first..."
-                : "Message ZecruAI..."
+              connectionStatus.daemon === "connected"
+                ? "Send a command to Claude Code..."
+                : activeProject
+                ? "Activate session in Settings..."
+                : "Add a project first..."
             }
           />
         </div>

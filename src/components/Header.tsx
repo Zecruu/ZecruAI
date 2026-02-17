@@ -1,13 +1,10 @@
 "use client";
 
-import { TabMode, ConnectionStatus } from "@/types";
-import TabSwitcher from "./TabSwitcher";
+import { ConnectionStatus } from "@/types";
 import ConnectionBadge from "./ConnectionBadge";
 import { Settings, MessageSquarePlus, FolderOpen, History, LogOut } from "lucide-react";
 
 interface HeaderProps {
-  activeTab: TabMode;
-  onTabChange: (tab: TabMode) => void;
   connectionStatus: ConnectionStatus;
   onNewChat: () => void;
   onSettings: () => void;
@@ -21,8 +18,6 @@ interface HeaderProps {
 }
 
 export default function Header({
-  activeTab,
-  onTabChange,
   connectionStatus,
   onNewChat,
   onSettings,
@@ -37,7 +32,7 @@ export default function Header({
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border safe-top">
       <div className="flex items-center justify-between px-4 py-3">
-        {/* Logo + History */}
+        {/* Logo + Status badges */}
         <div className="flex items-center gap-2">
           <button
             onClick={onHistory}
@@ -49,29 +44,23 @@ export default function Header({
             </div>
             <span className="font-semibold text-foreground hidden sm:block">
               ZecruAI
-              <span className="text-[10px] font-normal text-muted ml-1">v0.1.0</span>
             </span>
           </button>
-          {activeTab === "developer" && sessionActive && (
-            <span className="text-[10px] font-medium text-success bg-success/10 px-2 py-0.5 rounded-full hidden sm:inline-flex items-center gap-1">
-              Session Active
+          {sessionActive && (
+            <span className="text-[10px] font-medium text-success bg-success/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+              Active
             </span>
           )}
-          {activeTab === "developer" && sessionActive && dangerousMode && (
+          {sessionActive && dangerousMode && (
             <span className="text-[10px] font-medium text-warning bg-warning/10 px-2 py-0.5 rounded-full hidden sm:inline-flex items-center gap-1">
               Auto-Approve
             </span>
           )}
         </div>
 
-        {/* Tab switcher (center) */}
-        <TabSwitcher active={activeTab} onChange={onTabChange} />
-
         {/* Right actions */}
         <div className="flex items-center gap-1">
-          {activeTab === "developer" && (
-            <ConnectionBadge status={connectionStatus} />
-          )}
+          <ConnectionBadge status={connectionStatus} />
           <button
             onClick={onProjects}
             className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors"
@@ -81,7 +70,7 @@ export default function Header({
           </button>
           <button
             onClick={onHistory}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors sm:hidden"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors"
             title="History"
           >
             <History size={18} />
@@ -112,8 +101,8 @@ export default function Header({
         </div>
       </div>
 
-      {/* Active project bar — only in developer mode when a project is selected */}
-      {activeTab === "developer" && activeProjectName && (
+      {/* Active project bar */}
+      {activeProjectName && (
         <div className="flex items-center gap-2 px-4 pb-2 text-xs text-muted">
           <FolderOpen size={12} className="text-accent" />
           <button
