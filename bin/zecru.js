@@ -3,9 +3,10 @@
  * ZecruAI CLI — Connect your computer to ZecruAI
  *
  * Usage:
- *   zecru connect <code>              Connect to a ZecruAI session
- *   zecru connect <code> --dir .      Specify project directory
- *   zecru connect <code> --dangerous  Auto-approve all actions
+ *   zecru connect <code>                        Connect with Claude Code (default)
+ *   zecru connect <code> --engine codex          Connect with OpenAI Codex
+ *   zecru connect <code> --dir .                 Specify project directory
+ *   zecru connect <code> --dangerous             Auto-approve all actions
  *
  * The pairing code is shown in the ZecruAI web app under Settings.
  */
@@ -14,7 +15,6 @@
 
 const { spawn } = require("child_process");
 const path = require("path");
-const os = require("os");
 
 // ─── Relay URL ───────────────────────────────────────────────────────
 const DEFAULT_RELAY = "https://www.zecruai.com";
@@ -45,7 +45,7 @@ function parseArgs() {
   }
 
   if (command === "version" || command === "--version" || command === "-v") {
-    console.log("zecru-ai v0.1.0");
+    console.log("zecru-ai v0.1.2");
     process.exit(0);
   }
 
@@ -59,6 +59,7 @@ function parseArgs() {
   let workingDir = process.cwd();
   let dangerousMode = false;
   let relay = RELAY_URL;
+  let engine = "claude"; // default engine
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
@@ -66,6 +67,8 @@ function parseArgs() {
       workingDir = path.resolve(args[++i]);
     } else if ((arg === "--relay" || arg === "-r") && args[i + 1]) {
       relay = args[++i];
+    } else if ((arg === "--engine" || arg === "-e") && args[i + 1]) {
+      engine = args[++i].toLowerCase();
     } else if (arg === "--dangerous") {
       dangerousMode = true;
     } else if (!arg.startsWith("-") && !pairingCode) {
@@ -79,7 +82,13 @@ function parseArgs() {
     process.exit(1);
   }
 
-  return { pairingCode, workingDir, dangerousMode, relay };
+  if (engine !== "claude" && engine !== "codex") {
+    console.error(`${c.red}Unknown engine: ${engine}${c.reset}`);
+    console.error(`Supported engines: ${c.cyan}claude${c.reset}, ${c.cyan}codex${c.reset}\n`);
+    process.exit(1);
+  }
+
+  return { pairingCode, workingDir, dangerousMode, relay, engine };
 }
 
 function printHelp() {
@@ -87,55 +96,54 @@ function printHelp() {
 ${c.bold}${c.cyan}ZecruAI CLI${c.reset} — Connect your computer to ZecruAI
 
 ${c.bold}USAGE${c.reset}
-  ${c.cyan}zecru connect <code>${c.reset}              Connect to a session
-  ${c.cyan}zecru connect <code> --dir <path>${c.reset}  Specify project directory
-  ${c.cyan}zecru connect <code> --dangerous${c.reset}   Auto-approve all actions
+  ${c.cyan}zecru connect <code>${c.reset}                    Connect with Claude Code
+  ${c.cyan}zecru connect <code> --engine codex${c.reset}     Connect with OpenAI Codex
+  ${c.cyan}zecru connect <code> --dir <path>${c.reset}       Specify project directory
+  ${c.cyan}zecru connect <code> --dangerous${c.reset}        Auto-approve all actions
+
+${c.bold}ENGINES${c.reset}
+  ${c.cyan}claude${c.reset}  (default)  Uses Claude Code (@anthropic-ai/claude-code)
+  ${c.cyan}codex${c.reset}             Uses OpenAI Codex (@openai/codex)
 
 ${c.bold}OPTIONS${c.reset}
-  ${c.cyan}--dir, -d <path>${c.reset}     Project directory (default: current directory)
-  ${c.cyan}--relay, -r <url>${c.reset}    Relay server URL (default: ${DEFAULT_RELAY})
-  ${c.cyan}--dangerous${c.reset}          Skip permission prompts (use with caution)
+  ${c.cyan}--engine, -e <name>${c.reset}  AI engine: claude or codex (default: claude)
+  ${c.cyan}--dir, -d <path>${c.reset}    Project directory (default: current directory)
+  ${c.cyan}--relay, -r <url>${c.reset}   Relay server URL (default: ${DEFAULT_RELAY})
+  ${c.cyan}--dangerous${c.reset}         Skip permission prompts (use with caution)
 
 ${c.bold}EXAMPLES${c.reset}
-  ${c.gray}# Connect from your project folder${c.reset}
-  cd ~/my-project
+  ${c.gray}# Connect with Claude Code${c.reset}
   zecru connect ABC123
 
-  ${c.gray}# Connect with explicit directory${c.reset}
-  zecru connect ABC123 --dir ~/my-project
+  ${c.gray}# Connect with OpenAI Codex${c.reset}
+  zecru connect ABC123 --engine codex
+
+  ${c.gray}# Auto-approve with explicit directory${c.reset}
+  zecru connect ABC123 --dir ~/my-project --dangerous
 
 ${c.bold}SETUP${c.reset}
   1. Open ${c.cyan}zecruai.com${c.reset} on your phone or browser
   2. Go to Settings and copy your pairing code
   3. Run ${c.cyan}zecru connect <code>${c.reset} on your computer
 
-  Claude Code must be authenticated. Run ${c.cyan}claude${c.reset} once to log in.
+  For Claude: run ${c.cyan}claude${c.reset} once to authenticate.
+  For Codex:  run ${c.cyan}codex${c.reset} once to authenticate.
 `);
 }
 
 // ─── Tool Description ────────────────────────────────────────────────
 function describeToolUse(toolName, input) {
   switch (toolName) {
-    case "Read":
-      return `Reading ${shortenPath(input.file_path)}`;
-    case "Write":
-      return `Writing ${shortenPath(input.file_path)}`;
-    case "Edit":
-      return `Editing ${shortenPath(input.file_path)}`;
-    case "Bash":
-      return `Running: ${truncate(input.command, 60)}`;
-    case "Glob":
-      return `Searching files: ${input.pattern}`;
-    case "Grep":
-      return `Searching code: ${truncate(input.pattern, 40)}`;
-    case "Task":
-      return `Running sub-task`;
-    case "WebSearch":
-      return `Searching web: ${truncate(input.query, 40)}`;
-    case "WebFetch":
-      return `Fetching: ${truncate(input.url, 50)}`;
-    default:
-      return `Using ${toolName}`;
+    case "Read": return `Reading ${shortenPath(input.file_path)}`;
+    case "Write": return `Writing ${shortenPath(input.file_path)}`;
+    case "Edit": return `Editing ${shortenPath(input.file_path)}`;
+    case "Bash": return `Running: ${truncate(input.command, 60)}`;
+    case "Glob": return `Searching files: ${input.pattern}`;
+    case "Grep": return `Searching code: ${truncate(input.pattern, 40)}`;
+    case "Task": return `Running sub-task`;
+    case "WebSearch": return `Searching web: ${truncate(input.query, 40)}`;
+    case "WebFetch": return `Fetching: ${truncate(input.url, 50)}`;
+    default: return `Using ${toolName}`;
   }
 }
 
@@ -153,20 +161,19 @@ function truncate(text, max) {
 
 // ─── Claude Code CLI Path ────────────────────────────────────────────
 function getClaudeCLI() {
-  // Try local node_modules first (when running from the zecru-ai package)
   const localPath = path.join(__dirname, "..", "node_modules", "@anthropic-ai", "claude-code", "cli.js");
-  try {
-    require.resolve(localPath);
-    return localPath;
-  } catch {
-    // Fall back to globally installed
-    try {
-      const resolved = require.resolve("@anthropic-ai/claude-code/cli.js");
-      return resolved;
-    } catch {
-      return null;
-    }
-  }
+  try { require.resolve(localPath); return localPath; } catch {}
+  try { return require.resolve("@anthropic-ai/claude-code/cli.js"); } catch {}
+  return null;
+}
+
+// ─── Codex CLI Path ─────────────────────────────────────────────────
+function getCodexCLI() {
+  // Try to find the codex binary
+  const localPath = path.join(__dirname, "..", "node_modules", ".bin", "codex");
+  try { require("fs").accessSync(localPath); return localPath; } catch {}
+  // Try global — codex should be in PATH
+  return "codex";
 }
 
 // ─── Claude Code Bridge ─────────────────────────────────────────────
@@ -181,71 +188,46 @@ class ClaudeCodeBridge {
   }
 
   sendMessage(content, sessionId) {
-    if (this.process) {
-      this.process.kill("SIGTERM");
-      this.process = null;
-    }
-
+    if (this.process) { this.process.kill("SIGTERM"); this.process = null; }
     this.lineBuffer = "";
 
-    const args = [];
-    args.push("--print");
-    args.push("--verbose");
-    args.push("--output-format", "stream-json");
-
-    if (this.dangerousMode) {
-      args.push("--dangerously-skip-permissions");
-    }
-
+    const args = ["--print", "--verbose", "--output-format", "stream-json"];
+    if (this.dangerousMode) args.push("--dangerously-skip-permissions");
     const resumeId = sessionId || this.conversationId;
-    if (resumeId) {
-      args.push("--resume", resumeId);
-    }
-
+    if (resumeId) args.push("--resume", resumeId);
     args.push(content);
 
     const cliPath = getClaudeCLI();
     if (!cliPath) {
       this.socket.emit("daemon:response", {
         content: "Claude Code is not installed. Run: npm install -g @anthropic-ai/claude-code",
-        type: "error",
-        done: true,
+        type: "error", done: true,
       });
       return;
     }
 
-    console.log(`\n  ${c.cyan}[send]${c.reset} "${truncate(content, 60)}"`);
+    console.log(`\n  ${c.cyan}[claude]${c.reset} "${truncate(content, 60)}"`);
 
-    // Clean env — strip Claude Code session vars
     const cleanEnv = {};
     for (const [key, val] of Object.entries(process.env)) {
       if (val === undefined) continue;
-      if (key.startsWith("CLAUDE")) continue;
-      if (key.startsWith("MCP")) continue;
+      if (key.startsWith("CLAUDE") || key.startsWith("MCP")) continue;
       cleanEnv[key] = val;
     }
 
     this.process = spawn(process.execPath, [cliPath, ...args], {
-      cwd: this.workingDir,
-      shell: false,
-      env: cleanEnv,
+      cwd: this.workingDir, shell: false, env: cleanEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
     let gotAnyOutput = false;
-
-    this.socket.emit("daemon:activity", {
-      type: "status",
-      message: "Claude is thinking...",
-    });
+    this.socket.emit("daemon:activity", { type: "status", message: "Claude is thinking..." });
 
     this.process.stdout.on("data", (data) => {
       gotAnyOutput = true;
       this.lineBuffer += data.toString();
-
       const lines = this.lineBuffer.split("\n");
       this.lineBuffer = lines.pop() || "";
-
       for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed) this.processStreamLine(trimmed);
@@ -253,122 +235,60 @@ class ClaudeCodeBridge {
     });
 
     this.process.stderr.on("data", (data) => {
-      const text = data.toString();
-      console.log(`  ${c.yellow}[err]${c.reset}  ${text.substring(0, 200)}`);
+      console.log(`  ${c.yellow}[err]${c.reset}  ${data.toString().substring(0, 200)}`);
     });
 
     this.process.on("close", (code) => {
-      if (this.lineBuffer.trim()) {
-        this.processStreamLine(this.lineBuffer.trim());
-        this.lineBuffer = "";
-      }
-
+      if (this.lineBuffer.trim()) { this.processStreamLine(this.lineBuffer.trim()); this.lineBuffer = ""; }
       console.log(`  ${c.dim}[done] exit code ${code}${c.reset}`);
-
       if (!gotAnyOutput && code !== 0) {
         this.socket.emit("daemon:response", {
           content: `Claude Code exited with code ${code}. Make sure you're logged in — run 'claude' in a terminal once to authenticate.`,
-          type: "error",
-          done: true,
+          type: "error", done: true,
         });
       } else {
-        this.socket.emit("daemon:response", {
-          content: "",
-          type: "text",
-          done: true,
-        });
+        this.socket.emit("daemon:response", { content: "", type: "text", done: true });
       }
-
       this.process = null;
     });
 
     this.process.on("error", (err) => {
       console.error(`  ${c.red}[error]${c.reset} ${err.message}`);
-      this.socket.emit("daemon:response", {
-        content: `Error starting Claude Code: ${err.message}`,
-        type: "error",
-        done: true,
-      });
+      this.socket.emit("daemon:response", { content: `Error starting Claude Code: ${err.message}`, type: "error", done: true });
       this.process = null;
     });
   }
 
   processStreamLine(line) {
     let event;
-    try {
-      event = JSON.parse(line);
-    } catch {
-      return;
-    }
+    try { event = JSON.parse(line); } catch { return; }
 
-    const eventType = event.type;
-
-    switch (eventType) {
+    switch (event.type) {
       case "assistant": {
         const message = event.message || {};
         const contentBlocks = message.content || [];
-
-        if (event.session_id) {
-          this.conversationId = event.session_id;
-        }
-
+        if (event.session_id) this.conversationId = event.session_id;
         for (const block of contentBlocks) {
           if (block.type === "text" && block.text) {
             console.log(`  ${c.green}[text]${c.reset} ${block.text.substring(0, 80)}`);
-            this.socket.emit("daemon:response", {
-              content: block.text,
-              type: "text",
-              done: false,
-            });
+            this.socket.emit("daemon:response", { content: block.text, type: "text", done: false });
           } else if (block.type === "tool_use") {
-            const description = describeToolUse(block.name, block.input || {});
-            console.log(`  ${c.blue}[tool]${c.reset} ${description}`);
-            this.socket.emit("daemon:activity", {
-              type: "tool_use",
-              tool: block.name,
-              message: description,
-              input: block.input || {},
-            });
+            const desc = describeToolUse(block.name, block.input || {});
+            console.log(`  ${c.blue}[tool]${c.reset} ${desc}`);
+            this.socket.emit("daemon:activity", { type: "tool_use", tool: block.name, message: desc, input: block.input || {} });
           }
         }
         break;
       }
-
-      case "progress": {
-        this.socket.emit("daemon:activity", {
-          type: "progress",
-          message: "Working...",
-        });
-        break;
-      }
-
-      case "system": {
-        console.log(`  ${c.dim}[system] ${event.subtype || "unknown"}${c.reset}`);
-        break;
-      }
-
       case "result": {
-        const resultText = event.result;
-        const isError = event.is_error;
-        const costUsd = event.total_cost_usd;
-        const durationMs = event.duration_ms;
-        const sessionId = event.session_id;
-
-        if (sessionId) {
-          this.conversationId = sessionId;
-        }
-
-        const costStr = costUsd != null ? `$${costUsd.toFixed(4)}` : "?";
-        const durationStr = durationMs != null ? `${durationMs}ms` : "?";
-        console.log(`  ${c.magenta}[result]${c.reset} ${isError ? "ERROR" : "OK"} cost=${costStr} duration=${durationStr}`);
-
-        if (resultText) {
+        if (event.session_id) this.conversationId = event.session_id;
+        const costStr = event.total_cost_usd != null ? `$${event.total_cost_usd.toFixed(4)}` : "?";
+        console.log(`  ${c.magenta}[result]${c.reset} ${event.is_error ? "ERROR" : "OK"} cost=${costStr}`);
+        if (event.result) {
           this.socket.emit("daemon:result", {
-            text: resultText,
-            isError: isError || false,
-            costUsd: costUsd || 0,
-            durationMs: durationMs || 0,
-            sessionId: sessionId || null,
+            text: event.result, isError: event.is_error || false,
+            costUsd: event.total_cost_usd || 0, durationMs: event.duration_ms || 0,
+            sessionId: event.session_id || null,
           });
         }
         break;
@@ -376,41 +296,185 @@ class ClaudeCodeBridge {
     }
   }
 
-  sendPermissionResponse(approved) {
-    console.log(`  ${c.dim}[perm] ${approved ? "APPROVED" : "DENIED"}${c.reset}`);
+  kill() { if (this.process) { this.process.kill("SIGTERM"); this.process = null; } }
+}
+
+// ─── Codex Bridge ───────────────────────────────────────────────────
+class CodexBridge {
+  constructor(socket, workingDir, dangerousMode) {
+    this.process = null;
+    this.socket = socket;
+    this.workingDir = workingDir;
+    this.dangerousMode = dangerousMode;
+    this.threadId = null;
+    this.lineBuffer = "";
   }
 
-  kill() {
-    if (this.process) {
-      this.process.kill("SIGTERM");
+  sendMessage(content, sessionId) {
+    if (this.process) { this.process.kill("SIGTERM"); this.process = null; }
+    this.lineBuffer = "";
+
+    const codexPath = getCodexCLI();
+    const args = ["exec", "--json"];
+
+    if (this.dangerousMode) {
+      args.push("--full-auto");
+    }
+
+    // Resume session if we have one
+    const resumeId = sessionId || this.threadId;
+    if (resumeId) {
+      // For resume, replace "exec" with "exec resume <id>"
+      args.splice(1, 0, "resume", resumeId);
+    }
+
+    args.push(content);
+
+    console.log(`\n  ${c.cyan}[codex]${c.reset} "${truncate(content, 60)}"`);
+
+    const cleanEnv = {};
+    for (const [key, val] of Object.entries(process.env)) {
+      if (val === undefined) continue;
+      cleanEnv[key] = val;
+    }
+
+    this.process = spawn(codexPath, args, {
+      cwd: this.workingDir, shell: process.platform === "win32",
+      env: cleanEnv, stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let gotAnyOutput = false;
+    this.socket.emit("daemon:activity", { type: "status", message: "Codex is thinking..." });
+
+    this.process.stdout.on("data", (data) => {
+      gotAnyOutput = true;
+      this.lineBuffer += data.toString();
+      const lines = this.lineBuffer.split("\n");
+      this.lineBuffer = lines.pop() || "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed) this.processStreamLine(trimmed);
+      }
+    });
+
+    this.process.stderr.on("data", (data) => {
+      console.log(`  ${c.yellow}[err]${c.reset}  ${data.toString().substring(0, 200)}`);
+    });
+
+    this.process.on("close", (code) => {
+      if (this.lineBuffer.trim()) { this.processStreamLine(this.lineBuffer.trim()); this.lineBuffer = ""; }
+      console.log(`  ${c.dim}[done] exit code ${code}${c.reset}`);
+      if (!gotAnyOutput && code !== 0) {
+        this.socket.emit("daemon:response", {
+          content: `Codex exited with code ${code}. Make sure you're logged in — run 'codex' in a terminal once to authenticate.`,
+          type: "error", done: true,
+        });
+      } else {
+        this.socket.emit("daemon:response", { content: "", type: "text", done: true });
+      }
       this.process = null;
+    });
+
+    this.process.on("error", (err) => {
+      console.error(`  ${c.red}[error]${c.reset} ${err.message}`);
+      this.socket.emit("daemon:response", { content: `Error starting Codex: ${err.message}`, type: "error", done: true });
+      this.process = null;
+    });
+  }
+
+  processStreamLine(line) {
+    let event;
+    try { event = JSON.parse(line); } catch { return; }
+
+    switch (event.type) {
+      case "thread.started": {
+        if (event.thread_id) this.threadId = event.thread_id;
+        console.log(`  ${c.dim}[thread] ${event.thread_id}${c.reset}`);
+        break;
+      }
+
+      case "item.started": {
+        const item = event.item || {};
+        if (item.type === "command_execution" && item.command) {
+          const desc = `Running: ${truncate(item.command, 60)}`;
+          console.log(`  ${c.blue}[cmd]${c.reset} ${desc}`);
+          this.socket.emit("daemon:activity", { type: "tool_use", tool: "command", message: desc });
+        } else if (item.type === "file_change") {
+          const desc = `Modifying ${shortenPath(item.file || "")}`;
+          console.log(`  ${c.blue}[file]${c.reset} ${desc}`);
+          this.socket.emit("daemon:activity", { type: "tool_use", tool: "file_change", message: desc });
+        } else if (item.type === "web_search") {
+          console.log(`  ${c.blue}[web]${c.reset} Searching...`);
+          this.socket.emit("daemon:activity", { type: "tool_use", tool: "web_search", message: "Searching the web..." });
+        }
+        break;
+      }
+
+      case "item.completed": {
+        const item = event.item || {};
+        if (item.type === "agent_message" && item.text) {
+          console.log(`  ${c.green}[text]${c.reset} ${item.text.substring(0, 80)}`);
+          this.socket.emit("daemon:response", { content: item.text, type: "text", done: false });
+        } else if (item.type === "reasoning" && item.text) {
+          console.log(`  ${c.dim}[think]${c.reset} ${item.text.substring(0, 60)}`);
+        }
+        break;
+      }
+
+      case "turn.completed": {
+        const usage = event.usage || {};
+        const tokens = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+        console.log(`  ${c.magenta}[turn]${c.reset} ${tokens} tokens`);
+
+        this.socket.emit("daemon:result", {
+          text: "", isError: false, costUsd: 0,
+          durationMs: 0, sessionId: this.threadId || null,
+        });
+        break;
+      }
+
+      case "turn.failed": {
+        console.log(`  ${c.red}[fail]${c.reset} Turn failed`);
+        this.socket.emit("daemon:response", {
+          content: "Codex encountered an error during this turn.",
+          type: "error", done: false,
+        });
+        break;
+      }
+
+      case "error": {
+        const msg = event.message || event.error || "Unknown error";
+        console.log(`  ${c.red}[error]${c.reset} ${msg}`);
+        this.socket.emit("daemon:response", { content: msg, type: "error", done: false });
+        break;
+      }
     }
   }
+
+  kill() { if (this.process) { this.process.kill("SIGTERM"); this.process = null; } }
 }
 
 // ─── Main ────────────────────────────────────────────────────────────
 async function main() {
-  const { pairingCode, workingDir, dangerousMode, relay } = parseArgs();
+  const { pairingCode, workingDir, dangerousMode, relay, engine } = parseArgs();
 
-  // Check Claude Code is available
-  const cliPath = getClaudeCLI();
-  if (!cliPath) {
-    console.error(`
-${c.red}${c.bold}Claude Code not found!${c.reset}
-
-Install it first:
-  ${c.cyan}npm install -g @anthropic-ai/claude-code${c.reset}
-
-Then authenticate (one time):
-  ${c.cyan}claude${c.reset}
-`);
-    process.exit(1);
+  // Check CLI is available
+  if (engine === "claude") {
+    const cliPath = getClaudeCLI();
+    if (!cliPath) {
+      console.error(`\n${c.red}${c.bold}Claude Code not found!${c.reset}\n\nInstall it first:\n  ${c.cyan}npm install -g @anthropic-ai/claude-code${c.reset}\n\nThen authenticate:\n  ${c.cyan}claude${c.reset}\n`);
+      process.exit(1);
+    }
   }
+
+  const engineLabel = engine === "claude" ? "Claude Code" : "OpenAI Codex";
+  const engineColor = engine === "claude" ? c.cyan : c.green;
 
   // Banner
   console.log(`
-  ${c.bold}${c.cyan}ZecruAI${c.reset} ${c.dim}v0.1.0${c.reset}
+  ${c.bold}${c.cyan}ZecruAI${c.reset} ${c.dim}v0.1.2${c.reset}
   ${c.dim}────────────────────────────${c.reset}
+  ${c.bold}Engine:${c.reset}    ${engineColor}${engineLabel}${c.reset}
   ${c.bold}Code:${c.reset}      ${c.cyan}${pairingCode}${c.reset}
   ${c.bold}Directory:${c.reset} ${workingDir}
   ${c.bold}Relay:${c.reset}     ${relay}${dangerousMode ? `\n  ${c.bold}Mode:${c.reset}      ${c.yellow}AUTO-APPROVE${c.reset}` : ""}
@@ -424,15 +488,7 @@ Then authenticate (one time):
   try {
     io = require("socket.io-client").io;
   } catch {
-    console.error(`
-${c.red}socket.io-client not found!${c.reset}
-
-If you installed ZecruAI globally, try reinstalling:
-  ${c.cyan}npm install -g zecru-ai${c.reset}
-
-Or install the dependency manually:
-  ${c.cyan}npm install -g socket.io-client${c.reset}
-`);
+    console.error(`\n${c.red}socket.io-client not found!${c.reset}\n\nReinstall:\n  ${c.cyan}npm install -g zecru-ai${c.reset}\n`);
     process.exit(1);
   }
 
@@ -443,14 +499,14 @@ Or install the dependency manually:
     timeout: 10000,
   });
 
-  const bridge = new ClaudeCodeBridge(socket, workingDir, dangerousMode);
+  // Create the appropriate bridge
+  const bridge = engine === "claude"
+    ? new ClaudeCodeBridge(socket, workingDir, dangerousMode)
+    : new CodexBridge(socket, workingDir, dangerousMode);
 
   socket.on("connect", () => {
     console.log(`  ${c.green}Connected to relay!${c.reset}`);
-    socket.emit("daemon:register", {
-      pairingCode,
-      workingDir,
-    });
+    socket.emit("daemon:register", { pairingCode, workingDir });
   });
 
   socket.on("daemon:registered", (data) => {
@@ -466,7 +522,7 @@ Or install the dependency manually:
   });
 
   socket.on("daemon:permission_response", (data) => {
-    bridge.sendPermissionResponse(data.approved);
+    if (bridge.sendPermissionResponse) bridge.sendPermissionResponse(data.approved);
   });
 
   socket.on("disconnect", (reason) => {

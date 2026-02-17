@@ -15,17 +15,19 @@ interface GoogleUserInfo {
 }
 
 function getOrigin(req: NextRequest): string {
+  const proto = (req.headers.get("x-forwarded-proto") || "http").split(",")[0].trim();
   const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000";
-  const proto = req.headers.get("x-forwarded-proto") || "http";
   return `${proto}://${host}`;
 }
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
-  const error = req.nextUrl.searchParams.get("error");
+  const errorParam = req.nextUrl.searchParams.get("error");
   const origin = getOrigin(req);
 
-  if (error || !code) {
+  console.log(`[google callback] origin=${origin} code=${code ? "present" : "missing"} error=${errorParam || "none"}`);
+
+  if (errorParam || !code) {
     return NextResponse.redirect(`${origin}/login?error=google_denied`);
   }
 
@@ -37,6 +39,7 @@ export async function GET(req: NextRequest) {
   }
 
   const redirectUri = `${origin}/api/auth/google/callback`;
+  console.log(`[google callback] Exchanging code, redirect_uri=${redirectUri}`);
 
   try {
     // Exchange code for tokens
@@ -52,11 +55,14 @@ export async function GET(req: NextRequest) {
       }),
     });
 
+    const tokenBody = await tokenRes.json();
+
     if (!tokenRes.ok) {
+      console.error(`[google callback] Token exchange failed:`, JSON.stringify(tokenBody));
       return NextResponse.redirect(`${origin}/login?error=google_token_failed`);
     }
 
-    const tokens: GoogleTokenResponse = await tokenRes.json();
+    const tokens: GoogleTokenResponse = tokenBody;
 
     // Get user info from Google
     const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
@@ -64,10 +70,12 @@ export async function GET(req: NextRequest) {
     });
 
     if (!userRes.ok) {
+      console.error(`[google callback] Userinfo failed: ${userRes.status}`);
       return NextResponse.redirect(`${origin}/login?error=google_userinfo_failed`);
     }
 
     const googleUser: GoogleUserInfo = await userRes.json();
+    console.log(`[google callback] Got user: ${googleUser.email}`);
 
     if (!googleUser.email) {
       return NextResponse.redirect(`${origin}/login?error=google_no_email`);
@@ -88,7 +96,7 @@ export async function GET(req: NextRequest) {
 
       const result = await db.collection("users").insertOne({
         email,
-        passwordHash: null, // Google users don't have a password
+        passwordHash: null,
         googleId: googleUser.email,
         pairingCode,
         dangerousMode: false,
@@ -96,13 +104,17 @@ export async function GET(req: NextRequest) {
       });
 
       user = { _id: result.insertedId, email, pairingCode };
+      console.log(`[google callback] Created new user: ${email}`);
+    } else {
+      console.log(`[google callback] Existing user: ${email}`);
     }
 
     // Set auth cookie and redirect to app
     await setAuthCookie(user._id.toString());
 
     return NextResponse.redirect(`${origin}/`);
-  } catch {
+  } catch (err) {
+    console.error(`[google callback] Error:`, err);
     return NextResponse.redirect(`${origin}/login?error=google_failed`);
   }
 }
