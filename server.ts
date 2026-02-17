@@ -114,6 +114,20 @@ app.prepare().then(() => {
       socket.to(joinedRoom).emit("client:response", data);
     });
 
+    // Daemon → Client activity (tool use, progress, status)
+    socket.on("daemon:activity", (data: { type: string; tool?: string; message: string; input?: unknown }) => {
+      if (!joinedRoom) return;
+      socket.to(joinedRoom).emit("client:activity", data);
+    });
+
+    // Daemon → Client result (tokens, duration, session ID)
+    socket.on("daemon:result", (data: {
+      text: string; isError: boolean; tokens: number; durationMs: number; sessionId: string | null;
+    }) => {
+      if (!joinedRoom) return;
+      socket.to(joinedRoom).emit("client:result", data);
+    });
+
     // Daemon permission request
     socket.on("daemon:permission_request", (data: {
       id: string; action: string; description: string; files?: string[];
