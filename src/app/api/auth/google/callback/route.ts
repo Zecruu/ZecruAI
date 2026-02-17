@@ -14,10 +14,16 @@ interface GoogleUserInfo {
   picture?: string;
 }
 
+function getOrigin(req: NextRequest): string {
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000";
+  const proto = req.headers.get("x-forwarded-proto") || "http";
+  return `${proto}://${host}`;
+}
+
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
   const error = req.nextUrl.searchParams.get("error");
-  const origin = req.nextUrl.origin;
+  const origin = getOrigin(req);
 
   if (error || !code) {
     return NextResponse.redirect(`${origin}/login?error=google_denied`);
