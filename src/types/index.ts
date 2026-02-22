@@ -74,9 +74,24 @@ export interface User {
   overseerEnabled?: boolean;
 }
 
+export interface ProjectContext {
+  envKeys: string[];
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
+  scripts: Record<string, string>;
+  configFiles: string[];
+}
+
+export interface PrerequisiteItem {
+  type: "env_var" | "dependency" | "config_file" | "other";
+  name: string;
+  reason: string;
+}
+
 export interface OverseerDecision {
   autoApprove: boolean;
   reasoning: string;
+  prerequisites?: PrerequisiteItem[];
 }
 
 export interface OverseerFollowUp {

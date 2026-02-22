@@ -14,6 +14,7 @@ import { io, Socket } from "socket.io-client";
 import { spawn, ChildProcess } from "child_process";
 import * as readline from "readline";
 import * as path from "path";
+import * as fs from "fs";
 
 // --- Configuration ---
 const RELAY_URL = process.env.RELAY_URL || "http://localhost:3000";
@@ -419,6 +420,72 @@ async function main() {
       bridge.sendPermissionResponse(data.approved);
     }
   );
+
+  // Overseer: query project context from filesystem
+  socket.on("daemon:query-context", (_data: unknown, callback: (response: Record<string, unknown>) => void) => {
+    console.log("  [context] Gathering project context...");
+
+    const context: Record<string, unknown> = {
+      envKeys: [] as string[],
+      dependencies: {} as Record<string, string>,
+      devDependencies: {} as Record<string, string>,
+      scripts: {} as Record<string, string>,
+      configFiles: [] as string[],
+    };
+
+    try {
+      // Read .env file keys (NOT values)
+      const envKeys: string[] = [];
+      for (const envFile of [".env", ".env.local", ".env.development"]) {
+        try {
+          const content = fs.readFileSync(path.join(workingDir, envFile), "utf-8");
+          const keys = content
+            .split("\n")
+            .filter((line) => line.trim() && !line.startsWith("#"))
+            .map((line) => line.split("=")[0].trim())
+            .filter(Boolean);
+          envKeys.push(...keys);
+        } catch {
+          // file doesn't exist
+        }
+      }
+      context.envKeys = [...new Set(envKeys)];
+
+      // Read package.json
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(workingDir, "package.json"), "utf-8"));
+        context.dependencies = pkg.dependencies || {};
+        context.devDependencies = pkg.devDependencies || {};
+        context.scripts = pkg.scripts || {};
+      } catch {
+        // no package.json
+      }
+
+      // Check for key config files
+      const configFiles: string[] = [];
+      const checks = [
+        "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
+        "tsconfig.json", ".eslintrc.json", ".prettierrc",
+        "next.config.js", "next.config.mjs", "next.config.ts",
+        "vite.config.ts", "tailwind.config.ts", "tailwind.config.js",
+        "prisma/schema.prisma",
+      ];
+      for (const cfg of checks) {
+        try {
+          fs.accessSync(path.join(workingDir, cfg));
+          configFiles.push(cfg);
+        } catch {
+          // doesn't exist
+        }
+      }
+      context.configFiles = configFiles;
+    } catch (err: unknown) {
+      console.error(`  [context] Error: ${err instanceof Error ? err.message : "unknown"}`);
+    }
+
+    console.log(`  [context] Found: ${(context.envKeys as string[]).length} env keys, ${Object.keys(context.dependencies as object).length} deps, ${(context.configFiles as string[]).length} config files`);
+    callback(context);
+  });
 
   socket.on("disconnect", (reason) => {
     console.log(`\n  Disconnected: ${reason}. Reconnecting...`);

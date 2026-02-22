@@ -11,6 +11,7 @@ import {
   Project,
   TabMode,
   OverseerDecision,
+  PrerequisiteItem,
 } from "@/types";
 import { useSocket } from "@/hooks/useSocket";
 import { useAuth } from "@/hooks/useAuth";
@@ -57,6 +58,7 @@ export default function Home() {
   // Overseer state
   const [overseerEnabled, setOverseerEnabled] = useState(false);
   const [lastOverseerDecision, setLastOverseerDecision] = useState<OverseerDecision | null>(null);
+  const [prerequisiteWarnings, setPrerequisiteWarnings] = useState<PrerequisiteItem[]>([]);
   const lastUserMessageRef = useRef<string>("");
 
   // Tab state
@@ -490,7 +492,7 @@ export default function Home() {
       if (connectionStatus.daemon === "connected") {
         let autoApprove: boolean | undefined;
 
-        // Overseer pre-message evaluation
+        // Overseer pre-message evaluation (safety + prerequisites)
         if (overseerEnabled) {
           try {
             const res = await fetch("/api/overseer/evaluate", {
@@ -500,11 +502,34 @@ export default function Home() {
                 message: content,
                 projectName: activeProject?.name || "Unknown",
                 phase: "pre",
+                pairingCode,
+                projectId: activeProjectId,
               }),
             });
             const decision = await res.json();
             autoApprove = decision.autoApprove;
-            setLastOverseerDecision({ autoApprove: !!autoApprove, reasoning: decision.reasoning || "" });
+            const prereqs: PrerequisiteItem[] = decision.prerequisites || [];
+            setLastOverseerDecision({ autoApprove: !!autoApprove, reasoning: decision.reasoning || "", prerequisites: prereqs });
+
+            // Block sending if prerequisites are missing
+            if (prereqs.length > 0) {
+              setPrerequisiteWarnings(prereqs);
+              setIsTyping(false);
+              setCurrentActivity(null);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: uuidv4(),
+                  role: "system",
+                  content: `Overseer: This task requires ${prereqs.length} missing prerequisite${prereqs.length > 1 ? "s" : ""}. Check the banner above for details.`,
+                  timestamp: Date.now(),
+                  type: "status",
+                },
+              ]);
+              return;
+            }
+
+            setPrerequisiteWarnings([]);
             setCurrentActivity({
               type: "status",
               message: autoApprove ? "Overseer: auto-approved. Sending to Claude..." : "Sending to Claude (manual review)...",
@@ -540,6 +565,8 @@ export default function Home() {
       activeConversationId,
       overseerEnabled,
       activeProject,
+      pairingCode,
+      activeProjectId,
     ]
   );
 
@@ -668,6 +695,8 @@ export default function Home() {
         enabled={overseerEnabled}
         lastDecision={lastOverseerDecision}
         onToggle={handleOverseerToggle}
+        prerequisites={prerequisiteWarnings}
+        onDismissPrerequisites={() => setPrerequisiteWarnings([])}
       />
 
       {activeTab === "developer" ? (
