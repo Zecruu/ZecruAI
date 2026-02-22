@@ -23,6 +23,7 @@ export async function PUT(req: NextRequest) {
 
   const setFields: Record<string, unknown> = {};
   if (updates.dangerousMode !== undefined) setFields.dangerousMode = updates.dangerousMode;
+  if (updates.overseerEnabled !== undefined) setFields.overseerEnabled = updates.overseerEnabled;
 
   if (Object.keys(setFields).length > 0) {
     await db.collection("users").updateOne(

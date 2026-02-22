@@ -20,6 +20,9 @@ import {
   Laptop,
   LogOut,
   User,
+  Brain,
+  Key,
+  Trash2,
 } from "lucide-react";
 
 interface SettingsPanelProps {
@@ -33,6 +36,10 @@ interface SettingsPanelProps {
   onDangerousModeChange: (value: boolean) => void;
   userEmail?: string;
   onLogout?: () => void;
+  overseerEnabled: boolean;
+  onOverseerToggle: (value: boolean) => void;
+  hasAnthropicKey: boolean;
+  onAnthropicKeyChanged?: () => void;
 }
 
 function isLocalhost(): boolean {
@@ -52,6 +59,10 @@ export default function SettingsPanel({
   onDangerousModeChange,
   userEmail,
   onLogout,
+  overseerEnabled,
+  onOverseerToggle,
+  hasAnthropicKey,
+  onAnthropicKeyChanged,
 }: SettingsPanelProps) {
   const [copied, setCopied] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
@@ -60,6 +71,50 @@ export default function SettingsPanel({
   const [daemonError, setDaemonError] = useState<string | null>(null);
   const [showAuthGuide, setShowAuthGuide] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [anthropicKeySaving, setAnthropicKeySaving] = useState(false);
+  const [anthropicKeyError, setAnthropicKeyError] = useState<string | null>(null);
+  const [anthropicKeyConnected, setAnthropicKeyConnected] = useState(hasAnthropicKey);
+
+  useEffect(() => {
+    setAnthropicKeyConnected(hasAnthropicKey);
+  }, [hasAnthropicKey]);
+
+  const saveAnthropicKey = async () => {
+    if (!anthropicKey.trim()) return;
+    setAnthropicKeySaving(true);
+    setAnthropicKeyError(null);
+    try {
+      const res = await fetch("/api/overseer/key", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: anthropicKey.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAnthropicKeyConnected(true);
+        setAnthropicKey("");
+        onAnthropicKeyChanged?.();
+      } else {
+        setAnthropicKeyError(data.error || "Failed to save key");
+      }
+    } catch {
+      setAnthropicKeyError("Connection error");
+    } finally {
+      setAnthropicKeySaving(false);
+    }
+  };
+
+  const deleteAnthropicKey = async () => {
+    try {
+      await fetch("/api/overseer/key", { method: "DELETE" });
+      setAnthropicKeyConnected(false);
+      onOverseerToggle(false);
+      onAnthropicKeyChanged?.();
+    } catch {
+      // ignore
+    }
+  };
 
   const isLocal = isLocalhost();
 
@@ -477,6 +532,81 @@ export default function SettingsPanel({
               asking.
               {isConnected && " Restart session to apply changes."}
             </p>
+          </div>
+
+          {/* AI Overseer */}
+          <div className="border-t border-border pt-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                <Brain size={16} className="text-accent" />
+                AI Overseer
+              </h3>
+              <button
+                onClick={() => {
+                  if (!anthropicKeyConnected) return;
+                  onOverseerToggle(!overseerEnabled);
+                }}
+                disabled={!anthropicKeyConnected}
+                className={`relative w-10 h-5 rounded-full transition-colors ${
+                  overseerEnabled && anthropicKeyConnected ? "bg-accent" : "bg-border"
+                } ${!anthropicKeyConnected ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                    overseerEnabled && anthropicKeyConnected ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-[11px] text-muted mt-2">
+              Haiku analyzes each message and auto-approves safe coding tasks.
+              Requires your own Anthropic API key.
+            </p>
+
+            {/* API Key management */}
+            <div className="mt-3 space-y-2">
+              {anthropicKeyConnected ? (
+                <div className="flex items-center justify-between px-3 py-2 bg-success/5 border border-success/20 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <Key size={14} className="text-success" />
+                    <span className="text-xs text-success font-medium">API Key Connected</span>
+                  </div>
+                  <button
+                    onClick={deleteAnthropicKey}
+                    className="text-muted hover:text-danger transition-colors"
+                    title="Remove API key"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={anthropicKey}
+                      onChange={(e) => setAnthropicKey(e.target.value)}
+                      placeholder="sk-ant-..."
+                      className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted focus:outline-none focus:border-accent"
+                    />
+                    <button
+                      onClick={saveAnthropicKey}
+                      disabled={anthropicKeySaving || !anthropicKey.trim()}
+                      className="px-3 py-2 bg-accent text-white text-xs font-medium rounded-lg hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {anthropicKeySaving ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        "Save"
+                      )}
+                    </button>
+                  </div>
+                  {anthropicKeyError && (
+                    <p className="text-xs text-danger">{anthropicKeyError}</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Auth Help — only show in local mode */}

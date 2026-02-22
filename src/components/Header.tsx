@@ -1,8 +1,9 @@
 "use client";
 
-import { ConnectionStatus } from "@/types";
+import { ConnectionStatus, Deployment, TabMode } from "@/types";
 import ConnectionBadge from "./ConnectionBadge";
-import { Settings, MessageSquarePlus, FolderOpen, History, LogOut } from "lucide-react";
+import DeploymentBadge from "./DeploymentBadge";
+import { Settings, MessageSquarePlus, FolderOpen, History, LogOut, Paintbrush, Rocket } from "lucide-react";
 
 interface HeaderProps {
   connectionStatus: ConnectionStatus;
@@ -15,6 +16,10 @@ interface HeaderProps {
   dangerousMode?: boolean;
   userEmail?: string;
   onLogout?: () => void;
+  activeTab: TabMode;
+  onTabChange: (tab: TabMode) => void;
+  onDeploy?: () => void;
+  activeDeployment?: Deployment | null;
 }
 
 export default function Header({
@@ -28,6 +33,10 @@ export default function Header({
   dangerousMode,
   userEmail,
   onLogout,
+  activeTab,
+  onTabChange,
+  onDeploy,
+  activeDeployment,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border safe-top">
@@ -58,6 +67,31 @@ export default function Header({
           )}
         </div>
 
+        {/* Tab switcher - centered */}
+        <div className="flex items-center gap-1 bg-surface rounded-lg p-0.5">
+          <button
+            onClick={() => onTabChange("developer")}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              activeTab === "developer"
+                ? "bg-accent text-white"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            Chat
+          </button>
+          <button
+            onClick={() => onTabChange("ui")}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+              activeTab === "ui"
+                ? "bg-accent text-white"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            <Paintbrush size={12} />
+            Zecru UI
+          </button>
+        </div>
+
         {/* Right actions */}
         <div className="flex items-center gap-1">
           <ConnectionBadge status={connectionStatus} />
@@ -68,20 +102,33 @@ export default function Header({
           >
             <FolderOpen size={18} />
           </button>
-          <button
-            onClick={onHistory}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors"
-            title="History"
-          >
-            <History size={18} />
-          </button>
-          <button
-            onClick={onNewChat}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors"
-            title="New chat"
-          >
-            <MessageSquarePlus size={18} />
-          </button>
+          {onDeploy && (
+            <button
+              onClick={onDeploy}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors"
+              title="Deploy"
+            >
+              <Rocket size={18} />
+            </button>
+          )}
+          {activeTab === "developer" && (
+            <>
+              <button
+                onClick={onHistory}
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors"
+                title="History"
+              >
+                <History size={18} />
+              </button>
+              <button
+                onClick={onNewChat}
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors"
+                title="New chat"
+              >
+                <MessageSquarePlus size={18} />
+              </button>
+            </>
+          )}
           <button
             onClick={onSettings}
             className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors"
@@ -111,6 +158,9 @@ export default function Header({
           >
             {activeProjectName}
           </button>
+          {activeDeployment && onDeploy && (
+            <DeploymentBadge deployment={activeDeployment} onClick={onDeploy} />
+          )}
         </div>
       )}
     </header>

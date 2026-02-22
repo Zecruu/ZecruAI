@@ -1,4 +1,4 @@
-export type TabMode = "developer";
+export type TabMode = "developer" | "ui";
 
 export interface Message {
   id: string;
@@ -68,4 +68,100 @@ export interface User {
   pairingCode: string;
   dangerousMode: boolean;
   createdAt: number;
+  hasRailwayToken?: boolean;
+  hasVercelToken?: boolean;
+  hasAnthropicKey?: boolean;
+  overseerEnabled?: boolean;
+}
+
+export interface OverseerDecision {
+  autoApprove: boolean;
+  reasoning: string;
+}
+
+export interface OverseerFollowUp {
+  action: "none" | "follow_up";
+  followUpMessage?: string;
+  reasoning: string;
+}
+
+// === Deployment Types ===
+
+export type DeploymentProvider = "railway" | "vercel";
+export type DeploymentStatus = "creating" | "building" | "deploying" | "ready" | "error";
+
+export interface Deployment {
+  id: string;
+  projectId: string;
+  provider: DeploymentProvider;
+  providerProjectId: string;
+  providerServiceId?: string;
+  providerEnvironmentId?: string;
+  githubRepo?: string;
+  status: DeploymentStatus;
+  url?: string;
+  providerDeploymentId?: string;
+  lastDeployedAt?: number;
+  error?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// === Zecru UI Builder Types ===
+
+export type UIElementType =
+  | "container"
+  | "section"
+  | "navbar"
+  | "hero"
+  | "card"
+  | "button"
+  | "text"
+  | "heading"
+  | "image"
+  | "footer"
+  | "form"
+  | "input"
+  | "divider";
+
+export interface UIElementStyle {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  backgroundColor?: string;
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: string;
+  borderRadius?: number;
+  borderWidth?: number;
+  borderColor?: string;
+  padding?: number;
+  opacity?: number;
+  display?: "block" | "flex";
+  flexDirection?: "row" | "column";
+  justifyContent?: string;
+  alignItems?: string;
+  gap?: number;
+}
+
+export interface UIElement {
+  id: string;
+  type: UIElementType;
+  name: string;
+  content?: string;
+  src?: string;
+  placeholder?: string;
+  style: UIElementStyle;
+  children: UIElement[];
+  locked?: boolean;
+}
+
+export interface UIComponentTemplate {
+  type: UIElementType;
+  label: string;
+  icon: string;
+  defaultStyle: UIElementStyle;
+  defaultContent?: string;
+  defaultChildren?: UIElement[];
 }

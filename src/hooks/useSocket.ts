@@ -236,9 +236,9 @@ export function useSocket({
     };
   }, [pairingCode]);
 
-  const sendMessage = useCallback((content: string, conversationId?: string) => {
+  const sendMessage = useCallback((content: string, conversationId?: string, autoApprove?: boolean) => {
     if (socketRef.current?.connected) {
-      socketRef.current.emit("client:message", { content, conversationId });
+      socketRef.current.emit("client:message", { content, conversationId, autoApprove });
     }
   }, []);
 

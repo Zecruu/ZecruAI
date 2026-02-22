@@ -7,7 +7,10 @@ import {
   ActivityEvent,
   ResultEvent,
   Conversation,
+  Deployment,
   Project,
+  TabMode,
+  OverseerDecision,
 } from "@/types";
 import { useSocket } from "@/hooks/useSocket";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,6 +22,9 @@ import EmptyState from "@/components/EmptyState";
 import SettingsPanel from "@/components/SettingsPanel";
 import ConversationSidebar from "@/components/ConversationSidebar";
 import ProjectSidebar from "@/components/ProjectSidebar";
+import DeploymentPanel from "@/components/DeploymentPanel";
+import OverseerBanner from "@/components/OverseerBanner";
+import UIBuilder from "@/components/ui-builder/UIBuilder";
 
 function generateTitle(firstMessage: string): string {
   const clean = firstMessage.replace(/\n/g, " ").trim();
@@ -45,6 +51,24 @@ export default function Home() {
   const [sessionActivated, setSessionActivated] = useState(false);
   const [dangerousMode, setDangerousMode] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [deploymentOpen, setDeploymentOpen] = useState(false);
+  const [activeDeployment, setActiveDeployment] = useState<Deployment | null>(null);
+
+  // Overseer state
+  const [overseerEnabled, setOverseerEnabled] = useState(false);
+  const [lastOverseerDecision, setLastOverseerDecision] = useState<OverseerDecision | null>(null);
+  const lastUserMessageRef = useRef<string>("");
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabMode>("developer");
+
+  // UI Builder AI state
+  const [uiAiResponse, setUiAiResponse] = useState<string | null>(null);
+  const [uiAiLoading, setUiAiLoading] = useState(false);
+  const activeTabRef = useRef<TabMode>(activeTab);
+  activeTabRef.current = activeTab;
+  const uiAiLoadingRef = useRef(uiAiLoading);
+  uiAiLoadingRef.current = uiAiLoading;
 
   // Project state
   const [projects, setProjects] = useState<Project[]>([]);
@@ -56,6 +80,7 @@ export default function Home() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const handleSendRef = useRef<((content: string) => void) | null>(null);
 
   // Pairing code comes from user account
   const pairingCode = user?.pairingCode || "";
@@ -96,6 +121,25 @@ export default function Home() {
     }
   }, []);
 
+  // Fetch deployment for active project
+  const refreshDeployment = useCallback(async () => {
+    if (!activeProjectId) {
+      setActiveDeployment(null);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/deploy/project/${activeProjectId}`);
+      const data = await res.json();
+      setActiveDeployment(data.deployment || null);
+    } catch {
+      setActiveDeployment(null);
+    }
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    refreshDeployment();
+  }, [refreshDeployment]);
+
   // Real WebSocket connection
   const {
     connectionStatus,
@@ -104,6 +148,11 @@ export default function Home() {
   } = useSocket({
     pairingCode: effectivePairingCode,
     onMessage: useCallback((msg: Message) => {
+      // Route to UI builder if in UI mode
+      if (activeTabRef.current === "ui" && uiAiLoadingRef.current && msg.role === "assistant") {
+        setUiAiResponse(msg.content);
+        return;
+      }
       setMessages((prev) => {
         // Avoid duplicate if message with same ID already exists (from streaming)
         if (prev.some((m) => m.id === msg.id)) return prev;
@@ -111,6 +160,11 @@ export default function Home() {
       });
     }, []),
     onStreamUpdate: useCallback((id: string, content: string) => {
+      // Route to UI builder if in UI mode
+      if (activeTabRef.current === "ui" && uiAiLoadingRef.current) {
+        setUiAiResponse(content);
+        return;
+      }
       setMessages((prev) =>
         prev.map((m) => (m.id === id ? { ...m, content } : m))
       );
@@ -120,6 +174,9 @@ export default function Home() {
     }, []),
     onTypingStart: useCallback(() => setIsTyping(true), []),
     onTypingEnd: useCallback(() => {
+      if (activeTabRef.current === "ui") {
+        setUiAiLoading(false);
+      }
       setIsTyping(false);
       setCurrentActivity(null);
     }, []),
@@ -170,8 +227,42 @@ export default function Home() {
           );
         }
         setCurrentActivity(null);
+
+        // Overseer post-result evaluation
+        if (overseerEnabled && result.text && !result.isError) {
+          fetch("/api/overseer/evaluate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phase: "post",
+              result: result.text.substring(0, 2000),
+              projectName: activeProject?.name || "Unknown",
+              originalMessage: lastUserMessageRef.current,
+            }),
+          })
+            .then((r) => r.json())
+            .then((evaluation) => {
+              if (evaluation.action === "follow_up" && evaluation.followUpMessage) {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: uuidv4(),
+                    role: "system",
+                    content: `Overseer suggests: ${evaluation.followUpMessage}`,
+                    timestamp: Date.now(),
+                    type: "status",
+                  },
+                ]);
+                // Auto-send the follow-up after a short delay
+                setTimeout(() => {
+                  handleSendRef.current?.(evaluation.followUpMessage);
+                }, 1500);
+              }
+            })
+            .catch(() => {});
+        }
       },
-      [activeConversationId]
+      [activeConversationId, overseerEnabled, activeProject]
     ),
   });
 
@@ -214,6 +305,7 @@ export default function Home() {
     if (!user || dataLoaded) return;
 
     setDangerousMode(user.dangerousMode);
+    setOverseerEnabled(user.overseerEnabled || false);
 
     // Fetch projects and conversations from API
     Promise.all([
@@ -378,7 +470,7 @@ export default function Home() {
   }, []);
 
   const handleSend = useCallback(
-    (content: string) => {
+    async (content: string) => {
       const userMessage: Message = {
         id: uuidv4(),
         role: "user",
@@ -388,17 +480,45 @@ export default function Home() {
       };
 
       setMessages((prev) => [...prev, userMessage]);
+      lastUserMessageRef.current = content;
       setIsTyping(true);
       setCurrentActivity({
         type: "status",
-        message: "Sending to Claude...",
+        message: overseerEnabled ? "Overseer evaluating..." : "Sending to Claude...",
       });
 
       if (connectionStatus.daemon === "connected") {
+        let autoApprove: boolean | undefined;
+
+        // Overseer pre-message evaluation
+        if (overseerEnabled) {
+          try {
+            const res = await fetch("/api/overseer/evaluate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                message: content,
+                projectName: activeProject?.name || "Unknown",
+                phase: "pre",
+              }),
+            });
+            const decision = await res.json();
+            autoApprove = decision.autoApprove;
+            setLastOverseerDecision({ autoApprove: !!autoApprove, reasoning: decision.reasoning || "" });
+            setCurrentActivity({
+              type: "status",
+              message: autoApprove ? "Overseer: auto-approved. Sending to Claude..." : "Sending to Claude (manual review)...",
+            });
+          } catch {
+            // On failure, proceed without auto-approve
+            setLastOverseerDecision({ autoApprove: false, reasoning: "Evaluation failed" });
+          }
+        }
+
         const activeConvo = conversations.find(
           (c) => c.id === activeConversationId
         );
-        socketSendMessage(content, activeConvo?.sessionId);
+        socketSendMessage(content, activeConvo?.sessionId, autoApprove);
       } else {
         setIsTyping(false);
         setCurrentActivity(null);
@@ -418,8 +538,13 @@ export default function Home() {
       socketSendMessage,
       conversations,
       activeConversationId,
+      overseerEnabled,
+      activeProject,
     ]
   );
+
+  // Keep ref updated so onResult callback can trigger follow-up sends
+  handleSendRef.current = handleSend;
 
   const handlePermission = useCallback(
     (id: string, approved: boolean) => {
@@ -474,12 +599,33 @@ export default function Home() {
     [activeConversationId]
   );
 
+  // UI Builder: send design prompt to Claude through existing socket
+  const handleUITurnToCode = useCallback(
+    (prompt: string) => {
+      if (connectionStatus.daemon !== "connected") return;
+      setUiAiLoading(true);
+      setUiAiResponse("");
+      socketSendMessage(prompt);
+    },
+    [connectionStatus.daemon, socketSendMessage]
+  );
+
   const handleDangerousModeChange = useCallback((value: boolean) => {
     setDangerousMode(value);
     fetch("/api/user/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dangerousMode: value }),
+    }).catch(() => {});
+  }, []);
+
+  const handleOverseerToggle = useCallback((value: boolean) => {
+    setOverseerEnabled(value);
+    if (!value) setLastOverseerDecision(null);
+    fetch("/api/user/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ overseerEnabled: value }),
     }).catch(() => {});
   }, []);
 
@@ -512,42 +658,63 @@ export default function Home() {
         dangerousMode={dangerousMode}
         userEmail={user?.email}
         onLogout={logout}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onDeploy={() => setDeploymentOpen(true)}
+        activeDeployment={activeDeployment}
       />
 
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto">
-        {messages.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div className="max-w-3xl mx-auto">
-            {messages.map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                message={msg}
-                onPermission={handlePermission}
-              />
-            ))}
-            {isTyping && <TypingIndicator activity={currentActivity} />}
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      </div>
+      <OverseerBanner
+        enabled={overseerEnabled}
+        lastDecision={lastOverseerDecision}
+        onToggle={handleOverseerToggle}
+      />
 
-      {/* Input */}
-      <div className="border-t border-border bg-background/80 backdrop-blur-xl">
-        <div className="max-w-3xl mx-auto">
-          <ChatInput
-            onSend={handleSend}
-            placeholder={
-              connectionStatus.daemon === "connected"
-                ? "Send a command to Claude Code..."
-                : activeProject
-                ? "Activate session in Settings..."
-                : "Add a project first..."
-            }
-          />
-        </div>
-      </div>
+      {activeTab === "developer" ? (
+        <>
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto">
+            {messages.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div className="max-w-3xl mx-auto">
+                {messages.map((msg) => (
+                  <ChatMessage
+                    key={msg.id}
+                    message={msg}
+                    onPermission={handlePermission}
+                  />
+                ))}
+                {isTyping && <TypingIndicator activity={currentActivity} />}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <div className="border-t border-border bg-background/80 backdrop-blur-xl">
+            <div className="max-w-3xl mx-auto">
+              <ChatInput
+                onSend={handleSend}
+                placeholder={
+                  connectionStatus.daemon === "connected"
+                    ? "Send a command to Claude Code..."
+                    : activeProject
+                    ? "Activate session in Settings..."
+                    : "Add a project first..."
+                }
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <UIBuilder
+          connectionStatus={connectionStatus}
+          onSendToAI={handleUITurnToCode}
+          aiResponse={uiAiResponse}
+          aiLoading={uiAiLoading}
+        />
+      )}
 
       {/* Project Sidebar */}
       <ProjectSidebar
@@ -584,6 +751,20 @@ export default function Home() {
         onDangerousModeChange={handleDangerousModeChange}
         userEmail={user?.email}
         onLogout={logout}
+        overseerEnabled={overseerEnabled}
+        onOverseerToggle={handleOverseerToggle}
+        hasAnthropicKey={user?.hasAnthropicKey || false}
+      />
+
+      {/* Deployment Panel */}
+      <DeploymentPanel
+        isOpen={deploymentOpen}
+        onClose={() => setDeploymentOpen(false)}
+        activeProject={activeProject}
+        deployment={activeDeployment}
+        hasRailwayToken={user?.hasRailwayToken || false}
+        hasVercelToken={user?.hasVercelToken || false}
+        onDeploymentChanged={refreshDeployment}
       />
     </div>
   );

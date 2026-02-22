@@ -70,6 +70,10 @@ export async function getCurrentUser() {
       pairingCode: user.pairingCode,
       dangerousMode: user.dangerousMode || false,
       createdAt: user.createdAt,
+      hasRailwayToken: !!user.railwayToken,
+      hasVercelToken: !!user.vercelToken,
+      hasAnthropicKey: !!user.anthropicApiKey,
+      overseerEnabled: user.overseerEnabled || false,
     };
   } catch {
     return null;

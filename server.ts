@@ -92,7 +92,7 @@ app.prepare().then(() => {
     });
 
     // Client → Daemon message
-    socket.on("client:message", (data: { content: string; conversationId?: string }) => {
+    socket.on("client:message", (data: { content: string; conversationId?: string; autoApprove?: boolean }) => {
       if (!joinedRoom) return;
       const room = rooms.get(joinedRoom);
       if (!room?.daemon) {
@@ -104,6 +104,7 @@ app.prepare().then(() => {
       room.daemon.emit("daemon:message", {
         content: data.content,
         conversationId: data.conversationId,
+        autoApprove: data.autoApprove,
         from: socket.id,
       });
     });

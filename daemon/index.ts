@@ -109,7 +109,7 @@ class ClaudeCodeBridge {
    * IMPORTANT: stdin MUST be 'ignore' — Claude Code hangs when
    * stdin is a pipe on Windows.
    */
-  sendMessage(content: string, sessionId?: string) {
+  sendMessage(content: string, sessionId?: string, autoApprove?: boolean) {
     // Kill any existing process (one message at a time)
     if (this.process) {
       this.process.kill("SIGTERM");
@@ -123,7 +123,7 @@ class ClaudeCodeBridge {
     args.push("--verbose");
     args.push("--output-format", "stream-json");
 
-    if (this.dangerousMode) {
+    if (this.dangerousMode || autoApprove) {
       args.push("--dangerously-skip-permissions");
     }
 
@@ -407,9 +407,9 @@ async function main() {
 
   socket.on(
     "daemon:message",
-    (data: { content: string; conversationId?: string; from: string }) => {
-      console.log(`\n  ━━━ New message from web app ━━━`);
-      bridge.sendMessage(data.content, data.conversationId);
+    (data: { content: string; conversationId?: string; autoApprove?: boolean; from: string }) => {
+      console.log(`\n  ━━━ New message from web app ━━━${data.autoApprove ? " [overseer: auto-approve]" : ""}`);
+      bridge.sendMessage(data.content, data.conversationId, data.autoApprove);
     }
   );
 
