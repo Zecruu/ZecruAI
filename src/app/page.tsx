@@ -13,8 +13,9 @@ import {
   OverseerDecision,
   PrerequisiteItem,
 } from "@/types";
-import { useSocket } from "@/hooks/useSocket";
+import { useRobotDaemon } from "@/hooks/useRobotDaemon";
 import { useAuth } from "@/hooks/useAuth";
+import { ScannedProject, FileEntry, CommandOutput, BrowseFilesResult } from "@/types/robot";
 import Header from "@/components/Header";
 import ChatMessage from "@/components/ChatMessage";
 import ChatInput from "@/components/ChatInput";
@@ -26,6 +27,7 @@ import ProjectSidebar from "@/components/ProjectSidebar";
 import DeploymentPanel from "@/components/DeploymentPanel";
 import OverseerBanner from "@/components/OverseerBanner";
 import UIBuilder from "@/components/ui-builder/UIBuilder";
+import RobotLayout from "@/components/RobotLayout";
 
 function generateTitle(firstMessage: string): string {
   const clean = firstMessage.replace(/\n/g, " ").trim();
@@ -61,6 +63,17 @@ export default function Home() {
   const [prerequisiteWarnings, setPrerequisiteWarnings] = useState<PrerequisiteItem[]>([]);
   const lastUserMessageRef = useRef<string>("");
 
+  // Robot state
+  const [robotRunning, setRobotRunning] = useState(false);
+  const [fileExplorerOpen, setFileExplorerOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [fileEntries, setFileEntries] = useState<FileEntry[]>([]);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [commands, setCommands] = useState<CommandOutput[]>([]);
+  const [scannedProjects, setScannedProjects] = useState<ScannedProject[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [workspaceRoot, setWorkspaceRoot] = useState<string>("");
+
   // Tab state
   const [activeTab, setActiveTab] = useState<TabMode>("developer");
 
@@ -90,17 +103,20 @@ export default function Home() {
   // Derive active project
   const activeProject = projects.find((p) => p.id === activeProjectId) || null;
 
-  // Local mode: include project ID for multi-project isolation
-  // Remote mode: use base pairing code only (daemon connects with base code)
   const isLocal =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" ||
       window.location.hostname === "127.0.0.1" ||
       window.location.hostname === "::1");
-  const effectivePairingCode =
-    isLocal && activeProjectId
-      ? `${pairingCode}-${activeProjectId}`
-      : pairingCode;
+
+  // Robot mode (local): single connection with base pairing code
+  // Legacy mode (remote): per-project pairing code
+  const robotMode = isLocal;
+  const effectivePairingCode = robotMode
+    ? pairingCode
+    : activeProjectId
+    ? `${pairingCode}-${activeProjectId}`
+    : pairingCode;
 
   // Ref to track save debounce
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -142,12 +158,15 @@ export default function Home() {
     refreshDeployment();
   }, [refreshDeployment]);
 
-  // Real WebSocket connection
+  // WebSocket connection (robot daemon hook — superset of useSocket)
   const {
     connectionStatus,
     sendMessage: socketSendMessage,
     sendPermissionResponse,
-  } = useSocket({
+    scanWorkspace,
+    browseFiles,
+    runCommand,
+  } = useRobotDaemon({
     pairingCode: effectivePairingCode,
     onMessage: useCallback((msg: Message) => {
       // Route to UI builder if in UI mode
@@ -266,6 +285,32 @@ export default function Home() {
       },
       [activeConversationId, overseerEnabled, activeProject]
     ),
+    // Robot-specific callbacks
+    onScanResult: useCallback((result: { projects?: ScannedProject[] }) => {
+      setScannedProjects(result.projects || []);
+      setScanning(false);
+    }, []),
+    onBrowseResult: useCallback((_result: BrowseFilesResult) => {
+      // Only update top-level entries (lazy loading handles subdirs)
+    }, []),
+    onCommandOutput: useCallback((data: { id: string; data: string; stream: "stdout" | "stderr" }) => {
+      setCommands((prev) =>
+        prev.map((cmd) =>
+          cmd.id === data.id
+            ? { ...cmd, chunks: [...cmd.chunks, { data: data.data, stream: data.stream, timestamp: Date.now() }] }
+            : cmd
+        )
+      );
+    }, []),
+    onCommandDone: useCallback((data: { id: string; exitCode: number; durationMs: number }) => {
+      setCommands((prev) =>
+        prev.map((cmd) =>
+          cmd.id === data.id
+            ? { ...cmd, running: false, exitCode: data.exitCode, durationMs: data.durationMs }
+            : cmd
+        )
+      );
+    }, []),
   });
 
   // Track connected project IDs from socket daemon status
@@ -333,6 +378,41 @@ export default function Home() {
       });
 
     refreshDaemonStatus();
+
+    // Robot mode: load workspace root and auto-start robot daemon
+    if (isLocal) {
+      fetch("/api/user/workspace")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.workspaceRoot) setWorkspaceRoot(data.workspaceRoot);
+        })
+        .catch(() => {});
+
+      // Auto-start robot daemon
+      fetch("/api/daemon/robot/status")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.running) {
+            setRobotRunning(true);
+          } else {
+            // Start robot daemon
+            fetch("/api/daemon/robot/start", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pairingCode: user.pairingCode,
+                dangerousMode: user.dangerousMode,
+              }),
+            })
+              .then((r) => r.json())
+              .then((data) => {
+                if (data.success) setRobotRunning(true);
+              })
+              .catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -543,7 +623,8 @@ export default function Home() {
         const activeConvo = conversations.find(
           (c) => c.id === activeConversationId
         );
-        socketSendMessage(content, activeConvo?.sessionId, autoApprove);
+        const workingDir = robotMode ? activeProject?.workingDirectory : undefined;
+        socketSendMessage(content, activeConvo?.sessionId, autoApprove, workingDir);
       } else {
         setIsTyping(false);
         setCurrentActivity(null);
@@ -646,6 +727,51 @@ export default function Home() {
     }).catch(() => {});
   }, []);
 
+  // --- Robot handlers ---
+  const handleBrowseFiles = useCallback(
+    async (filePath: string): Promise<BrowseFilesResult> => {
+      return browseFiles(filePath);
+    },
+    [browseFiles]
+  );
+
+  const handleRefreshFiles = useCallback(() => {
+    if (!activeProject?.workingDirectory) return;
+    setFileLoading(true);
+    browseFiles(activeProject.workingDirectory).then((result) => {
+      setFileEntries(result.entries);
+      setFileLoading(false);
+    });
+  }, [activeProject, browseFiles]);
+
+  const handleRunCommand = useCallback(
+    (command: string) => {
+      const workingDir = activeProject?.workingDirectory || "";
+      if (!workingDir) return;
+      const id = runCommand(command, workingDir);
+      setCommands((prev) => [
+        ...prev,
+        { id, command, workingDir, chunks: [], exitCode: null, running: true },
+      ]);
+    },
+    [activeProject, runCommand]
+  );
+
+  const handleScanWorkspace = useCallback(() => {
+    if (!workspaceRoot) return;
+    setScanning(true);
+    scanWorkspace(workspaceRoot);
+  }, [workspaceRoot, scanWorkspace]);
+
+  const handleWorkspaceRootChange = useCallback((path: string) => {
+    setWorkspaceRoot(path);
+    fetch("/api/user/workspace", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspaceRoot: path }),
+    }).catch(() => {});
+  }, []);
+
   const handleOverseerToggle = useCallback((value: boolean) => {
     setOverseerEnabled(value);
     if (!value) setLastOverseerDecision(null);
@@ -655,6 +781,16 @@ export default function Home() {
       body: JSON.stringify({ overseerEnabled: value }),
     }).catch(() => {});
   }, []);
+
+  // Load file entries when project changes (robot mode)
+  useEffect(() => {
+    if (robotMode && activeProject?.workingDirectory && connectionStatus.daemon === "connected") {
+      handleRefreshFiles();
+    } else {
+      setFileEntries([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProject?.workingDirectory, connectionStatus.daemon, robotMode]);
 
   // Filter conversations for current project
   const filteredConversations = activeProjectId
@@ -689,6 +825,12 @@ export default function Home() {
         onTabChange={setActiveTab}
         onDeploy={() => setDeploymentOpen(true)}
         activeDeployment={activeDeployment}
+        robotMode={robotMode}
+        robotRunning={robotRunning}
+        fileExplorerOpen={fileExplorerOpen}
+        terminalOpen={terminalOpen}
+        onToggleFileExplorer={() => setFileExplorerOpen((v) => !v)}
+        onToggleTerminal={() => setTerminalOpen((v) => !v)}
       />
 
       <OverseerBanner
@@ -700,42 +842,58 @@ export default function Home() {
       />
 
       {activeTab === "developer" ? (
-        <>
-          {/* Messages area */}
-          <div className="flex-1 overflow-y-auto">
-            {messages.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <div className="max-w-3xl mx-auto">
-                {messages.map((msg) => (
-                  <ChatMessage
-                    key={msg.id}
-                    message={msg}
-                    onPermission={handlePermission}
-                  />
-                ))}
-                {isTyping && <TypingIndicator activity={currentActivity} />}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </div>
+        <RobotLayout
+          fileExplorerOpen={robotMode && fileExplorerOpen}
+          rootPath={activeProject?.workingDirectory || ""}
+          fileEntries={fileEntries}
+          fileLoading={fileLoading}
+          onBrowse={handleBrowseFiles}
+          onRefreshFiles={handleRefreshFiles}
+          terminalOpen={robotMode && terminalOpen}
+          workingDir={activeProject?.workingDirectory || ""}
+          commands={commands}
+          onRunCommand={handleRunCommand}
+          onCloseTerminal={() => setTerminalOpen(false)}
+        >
+          <div className="flex flex-col h-full">
+            {/* Messages area */}
+            <div className="flex-1 overflow-y-auto">
+              {messages.length === 0 ? (
+                <EmptyState />
+              ) : (
+                <div className="max-w-3xl mx-auto">
+                  {messages.map((msg) => (
+                    <ChatMessage
+                      key={msg.id}
+                      message={msg}
+                      onPermission={handlePermission}
+                    />
+                  ))}
+                  {isTyping && <TypingIndicator activity={currentActivity} />}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </div>
 
-          {/* Input */}
-          <div className="border-t border-border bg-background/80 backdrop-blur-xl">
-            <div className="max-w-3xl mx-auto">
-              <ChatInput
-                onSend={handleSend}
-                placeholder={
-                  connectionStatus.daemon === "connected"
-                    ? "Send a command to Claude Code..."
-                    : activeProject
-                    ? "Activate session in Settings..."
-                    : "Add a project first..."
-                }
-              />
+            {/* Input */}
+            <div className="border-t border-border bg-background/80 backdrop-blur-xl">
+              <div className="max-w-3xl mx-auto">
+                <ChatInput
+                  onSend={handleSend}
+                  placeholder={
+                    connectionStatus.daemon === "connected"
+                      ? "Send a command to Claude Code..."
+                      : activeProject
+                      ? robotMode
+                        ? "Robot starting..."
+                        : "Activate session in Settings..."
+                      : "Add a project first..."
+                  }
+                />
+              </div>
             </div>
           </div>
-        </>
+        </RobotLayout>
       ) : (
         <UIBuilder
           connectionStatus={connectionStatus}
@@ -755,6 +913,10 @@ export default function Home() {
         onSelect={handleSelectProject}
         onAdd={handleAddProject}
         onDelete={handleDeleteProject}
+        scannedProjects={scannedProjects}
+        scanning={scanning}
+        onScan={handleScanWorkspace}
+        workspaceRoot={workspaceRoot}
       />
 
       {/* Conversation History Sidebar */}
@@ -783,6 +945,10 @@ export default function Home() {
         overseerEnabled={overseerEnabled}
         onOverseerToggle={handleOverseerToggle}
         hasAnthropicKey={user?.hasAnthropicKey || false}
+        robotMode={robotMode}
+        robotRunning={robotRunning}
+        workspaceRoot={workspaceRoot}
+        onWorkspaceRootChange={handleWorkspaceRootChange}
       />
 
       {/* Deployment Panel */}

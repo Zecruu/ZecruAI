@@ -24,7 +24,8 @@ const RELAY_URL = process.env.RELAY_URL || "http://localhost:3000";
  * Uses the npm package installed in the zecru-ai project.
  */
 function getClaudeCLI(): string {
-  return path.join(process.cwd(), "node_modules", "@anthropic-ai", "claude-code", "cli.js");
+  const root = process.env.ELECTRON_APP_ROOT || process.cwd();
+  return path.join(root, "node_modules", "@anthropic-ai", "claude-code", "cli.js");
 }
 
 function parseArgs(): { pairingCode: string; workingDir: string; dangerousMode: boolean } {

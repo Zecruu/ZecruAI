@@ -39,6 +39,7 @@ export interface Project {
   name: string;
   workingDirectory: string;
   createdAt: number;
+  source?: "manual" | "scanned";
 }
 
 export interface DaemonConfig {
@@ -72,6 +73,7 @@ export interface User {
   hasVercelToken?: boolean;
   hasAnthropicKey?: boolean;
   overseerEnabled?: boolean;
+  workspaceRoot?: string;
 }
 
 export interface ProjectContext {

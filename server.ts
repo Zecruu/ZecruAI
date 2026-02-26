@@ -16,7 +16,7 @@ import { parse } from "url";
 const dev = process.env.NODE_ENV !== "production";
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
-const app = next({ dev });
+const app = next({ dev, dir: process.env.NEXT_DIR || undefined });
 const handle = app.getRequestHandler();
 
 interface RoomState {
@@ -91,8 +91,8 @@ app.prepare().then(() => {
       console.log(`  [relay] Client joined: room=${data.pairingCode} daemon=${room.daemon ? "YES" : "NO"}`);
     });
 
-    // Client → Daemon message
-    socket.on("client:message", (data: { content: string; conversationId?: string; autoApprove?: boolean }) => {
+    // Client → Daemon message (supports workingDir for robot mode)
+    socket.on("client:message", (data: { content: string; conversationId?: string; autoApprove?: boolean; workingDir?: string }) => {
       if (!joinedRoom) return;
       const room = rooms.get(joinedRoom);
       if (!room?.daemon) {
@@ -105,7 +105,61 @@ app.prepare().then(() => {
         content: data.content,
         conversationId: data.conversationId,
         autoApprove: data.autoApprove,
+        workingDir: data.workingDir,
         from: socket.id,
+      });
+    });
+
+    // Client → Daemon: Scan workspace for projects
+    socket.on("client:scan-workspace", (data: { rootPath: string }, callback?: (result: unknown) => void) => {
+      if (!joinedRoom) return;
+      const room = rooms.get(joinedRoom);
+      if (!room?.daemon) {
+        if (callback) callback({ projects: [], rootPath: data.rootPath, error: "Daemon not connected" });
+        return;
+      }
+      room.daemon.emit("daemon:scan-workspace", data, (result: unknown) => {
+        if (callback) callback(result);
+        socket.emit("client:scan-result", result);
+      });
+    });
+
+    // Client → Daemon: Browse files
+    socket.on("client:browse-files", (data: { path: string; depth?: number }, callback?: (result: unknown) => void) => {
+      if (!joinedRoom) return;
+      const room = rooms.get(joinedRoom);
+      if (!room?.daemon) {
+        if (callback) callback({ path: data.path, entries: [], error: "Daemon not connected" });
+        return;
+      }
+      room.daemon.emit("daemon:browse-files", data, (result: unknown) => {
+        if (callback) callback(result);
+        socket.emit("client:browse-result", result);
+      });
+    });
+
+    // Client → Daemon: Run terminal command
+    socket.on("client:run-command", (data: { command: string; workingDir: string; id: string }) => {
+      if (!joinedRoom) return;
+      const room = rooms.get(joinedRoom);
+      if (!room?.daemon) {
+        socket.emit("client:command-done", { id: data.id, exitCode: 1, error: "Daemon not connected" });
+        return;
+      }
+      room.daemon.emit("daemon:run-command", data);
+    });
+
+    // Client → Daemon: Create project
+    socket.on("client:create-project", (data: { path: string; name: string; template?: string }, callback?: (result: unknown) => void) => {
+      if (!joinedRoom) return;
+      const room = rooms.get(joinedRoom);
+      if (!room?.daemon) {
+        if (callback) callback({ success: false, error: "Daemon not connected" });
+        return;
+      }
+      room.daemon.emit("daemon:create-project", data, (result: unknown) => {
+        if (callback) callback(result);
+        socket.emit("client:project-created", result);
       });
     });
 
@@ -135,6 +189,18 @@ app.prepare().then(() => {
     }) => {
       if (!joinedRoom) return;
       socket.to(joinedRoom).emit("client:permission_request", data);
+    });
+
+    // Daemon → Client: Terminal command output (streaming)
+    socket.on("daemon:command-output", (data: { id: string; data: string; stream: string }) => {
+      if (!joinedRoom) return;
+      socket.to(joinedRoom).emit("client:command-output", data);
+    });
+
+    // Daemon → Client: Terminal command done
+    socket.on("daemon:command-done", (data: { id: string; exitCode: number; durationMs: number }) => {
+      if (!joinedRoom) return;
+      socket.to(joinedRoom).emit("client:command-done", data);
     });
 
     // Client permission response

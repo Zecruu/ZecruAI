@@ -23,6 +23,9 @@ import {
   Brain,
   Key,
   Trash2,
+  Bot,
+  FolderRoot,
+  Save,
 } from "lucide-react";
 
 interface SettingsPanelProps {
@@ -40,6 +43,11 @@ interface SettingsPanelProps {
   onOverseerToggle: (value: boolean) => void;
   hasAnthropicKey: boolean;
   onAnthropicKeyChanged?: () => void;
+  // Robot mode
+  robotMode?: boolean;
+  robotRunning?: boolean;
+  workspaceRoot?: string;
+  onWorkspaceRootChange?: (path: string) => void;
 }
 
 function isLocalhost(): boolean {
@@ -63,6 +71,10 @@ export default function SettingsPanel({
   onOverseerToggle,
   hasAnthropicKey,
   onAnthropicKeyChanged,
+  robotMode,
+  robotRunning,
+  workspaceRoot,
+  onWorkspaceRootChange,
 }: SettingsPanelProps) {
   const [copied, setCopied] = useState(false);
   const [copiedCmd, setCopiedCmd] = useState(false);
@@ -75,6 +87,8 @@ export default function SettingsPanel({
   const [anthropicKeySaving, setAnthropicKeySaving] = useState(false);
   const [anthropicKeyError, setAnthropicKeyError] = useState<string | null>(null);
   const [anthropicKeyConnected, setAnthropicKeyConnected] = useState(hasAnthropicKey);
+  const [editingWorkspace, setEditingWorkspace] = useState(false);
+  const [workspaceInput, setWorkspaceInput] = useState(workspaceRoot || "");
 
   useEffect(() => {
     setAnthropicKeyConnected(hasAnthropicKey);
@@ -297,6 +311,65 @@ export default function SettingsPanel({
               </p>
             </div>
           </div>
+
+          {/* Robot Status */}
+          {robotMode && isLocal && (
+            <div
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
+                robotRunning
+                  ? "bg-accent/5 border-accent/20"
+                  : "bg-surface border-border"
+              }`}
+            >
+              <Bot size={20} className={robotRunning ? "text-accent" : "text-muted"} />
+              <div className="flex-1">
+                <p className={`text-sm font-medium ${robotRunning ? "text-accent" : "text-foreground"}`}>
+                  {robotRunning ? "Robot Agent Active" : "Robot Agent Offline"}
+                </p>
+                <p className="text-xs text-muted">
+                  {robotRunning
+                    ? "Always-on agent handling all projects"
+                    : "Robot will auto-start on page load"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Workspace Root */}
+          {robotMode && isLocal && (
+            <div>
+              <h3 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                <FolderRoot size={16} className="text-accent" />
+                Workspace Root
+              </h3>
+              <p className="text-[11px] text-muted mb-2">
+                Root folder to scan for projects. The robot will discover all projects in this directory.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={workspaceInput}
+                  onChange={(e) => {
+                    setWorkspaceInput(e.target.value);
+                    setEditingWorkspace(true);
+                  }}
+                  placeholder="C:\Users\you\Projects"
+                  className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-xs text-foreground placeholder:text-muted font-mono focus:outline-none focus:border-accent/50"
+                />
+                {editingWorkspace && (
+                  <button
+                    onClick={() => {
+                      onWorkspaceRootChange?.(workspaceInput.trim());
+                      setEditingWorkspace(false);
+                    }}
+                    className="px-3 py-2 bg-accent text-white text-xs font-medium rounded-lg hover:bg-accent-hover transition-colors"
+                  >
+                    <Save size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Active Project Display */}
           <div>
@@ -726,7 +799,7 @@ export default function SettingsPanel({
 
           {/* App info */}
           <div className="text-center pt-2 pb-4">
-            <p className="text-xs text-muted">ZecruAI v0.1.3</p>
+            <p className="text-xs text-muted">ZecruAI v0.1.4</p>
           </div>
         </div>
       </div>

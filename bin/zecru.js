@@ -45,7 +45,8 @@ function parseArgs() {
   }
 
   if (command === "version" || command === "--version" || command === "-v") {
-    console.log("zecru-ai v0.1.3");
+    const pkg = require("../package.json");
+    console.log(`zecru-ai v${pkg.version}`);
     process.exit(0);
   }
 
@@ -473,7 +474,7 @@ async function main() {
 
   // Banner
   console.log(`
-  ${c.bold}${c.cyan}ZecruAI${c.reset} ${c.dim}v0.1.3${c.reset}
+  ${c.bold}${c.cyan}ZecruAI${c.reset} ${c.dim}v${require("../package.json").version}${c.reset}
   ${c.dim}────────────────────────────${c.reset}
   ${c.bold}Engine:${c.reset}    ${engineColor}${engineLabel}${c.reset}
   ${c.bold}Code:${c.reset}      ${c.cyan}${pairingCode}${c.reset}

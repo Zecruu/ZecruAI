@@ -3,7 +3,7 @@
 import { ConnectionStatus, Deployment, TabMode } from "@/types";
 import ConnectionBadge from "./ConnectionBadge";
 import DeploymentBadge from "./DeploymentBadge";
-import { Settings, MessageSquarePlus, FolderOpen, History, LogOut, Paintbrush, Rocket } from "lucide-react";
+import { Settings, MessageSquarePlus, FolderOpen, History, LogOut, Paintbrush, Rocket, FolderTree, Terminal, Bot } from "lucide-react";
 
 interface HeaderProps {
   connectionStatus: ConnectionStatus;
@@ -20,6 +20,13 @@ interface HeaderProps {
   onTabChange: (tab: TabMode) => void;
   onDeploy?: () => void;
   activeDeployment?: Deployment | null;
+  // Robot mode
+  robotMode?: boolean;
+  robotRunning?: boolean;
+  fileExplorerOpen?: boolean;
+  terminalOpen?: boolean;
+  onToggleFileExplorer?: () => void;
+  onToggleTerminal?: () => void;
 }
 
 export default function Header({
@@ -37,6 +44,12 @@ export default function Header({
   onTabChange,
   onDeploy,
   activeDeployment,
+  robotMode,
+  robotRunning,
+  fileExplorerOpen,
+  terminalOpen,
+  onToggleFileExplorer,
+  onToggleTerminal,
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border safe-top">
@@ -55,11 +68,16 @@ export default function Header({
               ZecruAI
             </span>
           </button>
-          {sessionActive && (
+          {robotMode && robotRunning ? (
+            <span className="text-[10px] font-medium text-accent bg-accent/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+              <Bot size={10} />
+              Robot
+            </span>
+          ) : sessionActive ? (
             <span className="text-[10px] font-medium text-success bg-success/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
               Active
             </span>
-          )}
+          ) : null}
           {sessionActive && dangerousMode && (
             <span className="text-[10px] font-medium text-warning bg-warning/10 px-2 py-0.5 rounded-full hidden sm:inline-flex items-center gap-1">
               Auto-Approve
@@ -95,6 +113,32 @@ export default function Header({
         {/* Right actions */}
         <div className="flex items-center gap-1">
           <ConnectionBadge status={connectionStatus} />
+          {robotMode && onToggleFileExplorer && (
+            <button
+              onClick={onToggleFileExplorer}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+                fileExplorerOpen
+                  ? "text-accent bg-accent/10"
+                  : "text-muted hover:text-foreground hover:bg-surface"
+              }`}
+              title="File Explorer"
+            >
+              <FolderTree size={18} />
+            </button>
+          )}
+          {robotMode && onToggleTerminal && (
+            <button
+              onClick={onToggleTerminal}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+                terminalOpen
+                  ? "text-accent bg-accent/10"
+                  : "text-muted hover:text-foreground hover:bg-surface"
+              }`}
+              title="Terminal"
+            >
+              <Terminal size={18} />
+            </button>
+          )}
           <button
             onClick={onProjects}
             className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-foreground hover:bg-surface transition-colors"

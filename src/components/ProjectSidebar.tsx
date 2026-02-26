@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Project } from "@/types";
+import { ScannedProject } from "@/types/robot";
 import {
   FolderOpen,
   Plus,
@@ -9,6 +10,7 @@ import {
   Trash2,
   Check,
 } from "lucide-react";
+import WorkspaceScanner from "./WorkspaceScanner";
 
 interface ProjectSidebarProps {
   isOpen: boolean;
@@ -19,6 +21,11 @@ interface ProjectSidebarProps {
   onSelect: (id: string) => void;
   onAdd: (name: string, workingDirectory: string) => void;
   onDelete: (id: string) => void;
+  // Robot workspace scanning
+  scannedProjects?: ScannedProject[];
+  scanning?: boolean;
+  onScan?: () => void;
+  workspaceRoot?: string;
 }
 
 export default function ProjectSidebar({
@@ -30,6 +37,10 @@ export default function ProjectSidebar({
   onSelect,
   onAdd,
   onDelete,
+  scannedProjects = [],
+  scanning = false,
+  onScan,
+  workspaceRoot,
 }: ProjectSidebarProps) {
   const [adding, setAdding] = useState(false);
   const [newPath, setNewPath] = useState("");
@@ -166,6 +177,19 @@ export default function ProjectSidebar({
             </div>
           )}
         </div>
+
+        {/* Workspace Scanner */}
+        {workspaceRoot && onScan && (
+          <div className="border-t border-border">
+            <WorkspaceScanner
+              scannedProjects={scannedProjects}
+              scanning={scanning}
+              onScan={onScan}
+              onAddProject={onAdd}
+              addedPaths={new Set(projects.map((p) => p.workingDirectory))}
+            />
+          </div>
+        )}
 
         {/* Add Project Button */}
         <div className="border-t border-border p-3">

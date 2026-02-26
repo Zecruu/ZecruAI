@@ -1,6 +1,7 @@
 {
   "name": "zecru-ai",
-  "version": "0.1.3",
+  "version": "0.1.4",
+  "main": "dist-electron/main.js",
   "engines": {
     "node": ">=20.9.0"
   },
@@ -13,13 +14,18 @@
     "start": "npx ts-node server.ts",
     "lint": "eslint",
     "zecru": "npx ts-node server.ts",
-    "daemon": "npx ts-node daemon/index.ts"
+    "daemon": "npx ts-node daemon/index.ts",
+    "electron:compile": "tsc -p electron/tsconfig.json && tsc -p tsconfig.server.json && tsc -p tsconfig.daemon.json",
+    "electron:dev": "npm run build && npm run electron:compile && concurrently -n server,electron -c blue,green \"node dist-server/server.js\" \"wait-on http://localhost:3000 && electron dist-electron/main.js\"",
+    "electron:build": "npm run build && npm run electron:compile && electron-builder --win",
+    "electron:build:ci": "electron-builder --win --publish always"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.42",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "bcryptjs": "^3.0.3",
+    "electron-updater": "^6.3.9",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.564.0",
     "mongodb": "^6.21.0",
@@ -39,8 +45,56 @@
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
     "concurrently": "^9.2.1",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.zecruai.desktop",
+    "productName": "ZecruAI",
+    "copyright": "Copyright 2025 ZecruAI",
+    "directories": {
+      "output": "dist-app",
+      "buildResources": "build-assets"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": ".next", "to": "app/.next", "filter": ["**/*"] },
+      { "from": "dist-server", "to": "app/dist-server", "filter": ["**/*"] },
+      { "from": "dist-daemon", "to": "app/dist-daemon", "filter": ["**/*"] },
+      { "from": "public", "to": "app/public", "filter": ["**/*"] },
+      { "from": "node_modules", "to": "app/node_modules", "filter": ["**/*"] }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build-assets/icon.ico",
+      "artifactName": "ZecruAI-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build-assets/icon.ico",
+      "uninstallerIcon": "build-assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ZecruAI",
+      "perMachine": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Zecruu",
+      "repo": "ZecruAI",
+      "releaseType": "release"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/@anthropic-ai/claude-code/**"
+    ]
   }
 }
