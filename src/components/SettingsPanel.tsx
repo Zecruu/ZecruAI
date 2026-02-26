@@ -797,6 +797,20 @@ export default function SettingsPanel({
             </p>
           </div>
 
+          {/* Download Desktop App */}
+          <div className="border-t border-border pt-4">
+            <a
+              href="/download"
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-surface border border-border text-foreground text-sm font-medium hover:bg-accent hover:text-white hover:border-accent active:scale-[0.98] transition-all"
+            >
+              <Monitor size={18} />
+              Download Desktop App
+            </a>
+            <p className="text-[11px] text-muted text-center mt-2">
+              Windows installer with auto-updates. No browser needed.
+            </p>
+          </div>
+
           {/* App info */}
           <div className="text-center pt-2 pb-4">
             <p className="text-xs text-muted">ZecruAI v0.1.4</p>
