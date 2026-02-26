@@ -1,6 +1,6 @@
 {
   "name": "zecru-ai",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Your AI agent — simple for everyone, powerful for developers.",
   "author": "Zecruu",
   "main": "dist-electron/main.js",

@@ -40,7 +40,7 @@ function formatBytes(bytes: number): string {
 export default async function DownloadPage() {
   const release = await getLatestRelease();
   const exeAsset = release?.assets.find((a) => a.name.endsWith(".exe"));
-  const version = release?.tag_name ?? "v0.1.4";
+  const version = release?.tag_name ?? "v0.1.5";
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-16">

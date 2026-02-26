@@ -813,7 +813,7 @@ export default function SettingsPanel({
 
           {/* App info */}
           <div className="text-center pt-2 pb-4">
-            <p className="text-xs text-muted">ZecruAI v0.1.4</p>
+            <p className="text-xs text-muted">ZecruAI v0.1.5</p>
           </div>
         </div>
       </div>
