@@ -1,6 +1,8 @@
 {
   "name": "zecru-ai",
   "version": "0.1.4",
+  "description": "Your AI agent — simple for everyone, powerful for developers.",
+  "author": "Zecruu",
   "main": "dist-electron/main.js",
   "engines": {
     "node": ">=20.9.0"
@@ -73,7 +75,7 @@
     ],
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],
-      "icon": "build-assets/icon.ico",
+      "icon": "build-assets/icon.png",
       "artifactName": "ZecruAI-Setup-${version}.exe"
     },
     "nsis": {
