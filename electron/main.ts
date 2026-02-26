@@ -20,6 +20,18 @@ function getResourcePath(...segments: string[]): string {
 const USER_DATA = app.getPath("userData");
 const ENV_FILE = path.join(USER_DATA, "zecru.env");
 
+// Try to read bundled production config (written during CI build)
+function loadBundledConfig(): Record<string, string> {
+  try {
+    const configPath = path.join(__dirname, "config.json");
+    if (fs.existsSync(configPath)) {
+      const data = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      return data;
+    }
+  } catch {}
+  return {};
+}
+
 function loadEnvFile(): Record<string, string> {
   const env: Record<string, string> = {};
 
@@ -32,6 +44,12 @@ function loadEnvFile(): Record<string, string> {
       if (idx < 0) continue;
       env[trimmed.slice(0, idx)] = trimmed.slice(idx + 1);
     }
+  }
+
+  // Bundled config takes priority for production builds
+  const bundled = loadBundledConfig();
+  if (bundled.MONGODB_URI) {
+    env.MONGODB_URI = bundled.MONGODB_URI;
   }
 
   if (!env.JWT_SECRET) {
