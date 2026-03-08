@@ -28,6 +28,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "bcryptjs": "^3.0.3",
     "electron-updater": "^6.3.9",
+    "jose": "^6.2.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.564.0",
     "mongodb": "^6.21.0",
@@ -67,14 +68,51 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": ".next", "to": "app/.next", "filter": ["**/*"] },
-      { "from": "dist-server", "to": "app/dist-server", "filter": ["**/*"] },
-      { "from": "dist-daemon", "to": "app/dist-daemon", "filter": ["**/*"] },
-      { "from": "public", "to": "app/public", "filter": ["**/*"] },
-      { "from": "node_modules", "to": "app/node_modules", "filter": ["**/*"] }
+      {
+        "from": ".next",
+        "to": "app/.next",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "dist-server",
+        "to": "app/dist-server",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "dist-daemon",
+        "to": "app/dist-daemon",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "public",
+        "to": "app/public",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "node_modules",
+        "to": "app/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build-assets/icon.png",
       "artifactName": "ZecruAI-Setup-${version}.exe"
     },
